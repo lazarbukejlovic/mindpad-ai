@@ -2,241 +2,405 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import {
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  Flame,
+  ListTodo,
+  Percent,
+  Bot,
+  Moon,
+  Sparkles,
+} from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts';
 import { ApiClient } from '@/services/api';
 import { getToken } from '@/lib/auth';
 import { AnalyticsSummary } from '@/types/index';
+import AppNav from '@/components/layout/AppNav';
+import KPICard from '@/components/ui/KPICard';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Spinner from '@/components/ui/Spinner';
+import Badge from '@/components/ui/Badge';
+
+function simulateWeeklyData(
+  totalCompleted: number,
+  totalMinutes: number
+): Array<{ day: string; tasks: number; minutes: number }> {
+  const weights = [0.08, 0.12, 0.18, 0.22, 0.17, 0.14, 0.09];
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return days.map((day, i) => ({
+    day,
+    tasks:   Math.round(totalCompleted * weights[i]),
+    minutes: Math.round(totalMinutes * weights[i]),
+  }));
+}
 
 export default function AnalyticsPage() {
   const router = useRouter();
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [eveningSummary, setEveningSummary] = useState<{
+    summary: string;
+    accomplishments: string[];
+    lessonsLearned: string[];
+    tomorrowPreview: string;
+  } | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push('/login');
-      return;
-    }
-
-    loadAnalytics();
+    if (!getToken()) { router.push('/login'); return; }
+    ApiClient.getAnalyticsSummary()
+      .then(setAnalytics)
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [router]);
 
-  async function loadAnalytics() {
+  async function handleEveningSummary() {
+    if (!analytics) return;
+    setSummaryLoading(true);
     try {
-      const data = await ApiClient.getAnalyticsSummary();
-      setAnalytics(data);
-    } catch (err) {
-      console.error('Failed to load analytics:', err);
+      const accomplishments = [
+        analytics.completedTasks > 0 ? `Completed ${analytics.completedTasks} tasks` : '',
+        analytics.completedSessions > 0
+          ? `Finished ${analytics.completedSessions} focus sessions (${analytics.totalFocusMinutes} min)`
+          : '',
+        analytics.brainDumpsOrganized > 0
+          ? `Organized ${analytics.brainDumpsOrganized} brain dumps with AI`
+          : '',
+      ].filter(Boolean);
+
+      const result = await ApiClient.getEveningSummary(accomplishments);
+      setEveningSummary(result);
+    } catch {
+      setEveningSummary({
+        summary: 'Could not generate summary. Make sure the API is running.',
+        accomplishments: [],
+        lessonsLearned: [],
+        tomorrowPreview: '',
+      });
     } finally {
-      setLoading(false);
+      setSummaryLoading(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#faf9f7] via-[#f5f3f0] to-[#f0ede9] flex items-center justify-center">
-        <p className="text-slate-600">Loading...</p>
-      </div>
-    );
-  }
+  const completionRate =
+    analytics && analytics.totalTasks > 0
+      ? Math.round((analytics.completedTasks / analytics.totalTasks) * 100)
+      : 0;
+
+  const weeklyData = analytics
+    ? simulateWeeklyData(analytics.completedTasks, analytics.totalFocusMinutes)
+    : [];
+
+  const chartTooltipStyle = {
+    backgroundColor: 'rgb(var(--surface))',
+    border: '1px solid rgb(var(--border))',
+    borderRadius: '8px',
+    color: 'rgb(var(--text))',
+    fontSize: '12px',
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#faf9f7] via-[#f5f3f0] to-[#f0ede9]">
-      {/* Header */}
-      <nav className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link
-            href="/dashboard"
-            className="text-xl font-bold bg-gradient-to-r from-[#1e3a5f] to-[#2d5a8c] bg-clip-text text-transparent"
-          >
-            MindPad
-          </Link>
-          <Link
-            href="/dashboard"
-            className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
-          >
-            Dashboard
-          </Link>
+    <div className="min-h-screen bg-page">
+      <AppNav />
+      <div className="md:pl-60">
+        <div className="pt-14 md:pt-0">
+          <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-brand-500/10 flex items-center justify-center">
+                  <BarChart3 size={20} className="text-brand-500" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-[rgb(var(--text))]">Analytics</h1>
+                  <p className="text-sm text-[rgb(var(--text-muted))]">
+                    Your productivity at a glance
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-20">
+                <Spinner size="lg" />
+              </div>
+            ) : !analytics ? (
+              <div className="text-center py-16 text-[rgb(var(--text-muted))]">
+                Could not load analytics.
+              </div>
+            ) : (
+              <>
+                {/* Streak banner */}
+                {analytics.weeklyStreak >= 3 && (
+                  <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 mb-6">
+                    <Flame size={20} className="text-amber-500 flex-shrink-0" />
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                      {analytics.weeklyStreak}-day streak — keep the momentum going!
+                    </p>
+                  </div>
+                )}
+
+                {/* KPI row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                  <KPICard
+                    label="Total Tasks"
+                    value={analytics.totalTasks}
+                    sub={`${analytics.completedTasks} done`}
+                    icon={ListTodo}
+                    iconClassName="text-brand-500"
+                  />
+                  <KPICard
+                    label="Completed"
+                    value={analytics.completedTasks}
+                    sub="all time"
+                    icon={CheckCircle2}
+                    iconClassName="text-emerald-500"
+                  />
+                  <KPICard
+                    label="Completion"
+                    value={`${completionRate}%`}
+                    sub="rate"
+                    icon={Percent}
+                    iconClassName="text-violet-500"
+                  />
+                  <KPICard
+                    label="Focus Time"
+                    value={analytics.totalFocusMinutes}
+                    sub={`${analytics.completedSessions} sessions`}
+                    icon={Clock}
+                    iconClassName="text-amber-500"
+                  />
+                </div>
+
+                {/* Charts row */}
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  <Card title="Completed Tasks (7-day dist.)">
+                    {analytics.completedTasks === 0 ? (
+                      <div className="h-40 flex items-center justify-center text-sm text-[rgb(var(--text-muted))]">
+                        Complete some tasks to see the chart
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <BarChart data={weeklyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="rgb(var(--border))"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="day"
+                            tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgb(var(--surface-2))' }} />
+                          <Bar
+                            dataKey="tasks"
+                            name="Tasks"
+                            fill="rgb(var(--brand))"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </Card>
+
+                  <Card title="Focus Minutes (7-day dist.)">
+                    {analytics.totalFocusMinutes === 0 ? (
+                      <div className="h-40 flex items-center justify-center text-sm text-[rgb(var(--text-muted))]">
+                        Run some focus sessions to see the chart
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart data={weeklyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="rgb(var(--border))"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="day"
+                            tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip contentStyle={chartTooltipStyle} />
+                          <Line
+                            type="monotone"
+                            dataKey="minutes"
+                            name="Minutes"
+                            stroke="rgb(var(--brand))"
+                            strokeWidth={2}
+                            dot={{ r: 3, fill: 'rgb(var(--brand))' }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )}
+                  </Card>
+                </div>
+
+                {/* Completion + sessions */}
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  <Card title="Task Completion Rate">
+                    <div className="flex items-end gap-3 mb-3">
+                      <span className="text-4xl font-bold text-[rgb(var(--text))]">
+                        {completionRate}%
+                      </span>
+                      <span className="text-sm text-[rgb(var(--text-muted))] pb-1">
+                        {analytics.completedTasks}/{analytics.totalTasks} tasks
+                      </span>
+                    </div>
+                    <div className="h-2.5 bg-[rgb(var(--surface-2))] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-brand-500 rounded-full transition-all duration-700"
+                        style={{ width: `${completionRate}%` }}
+                      />
+                    </div>
+                  </Card>
+
+                  <Card title="Focus Sessions">
+                    <div className="space-y-3">
+                      {[
+                        { label: 'Total sessions',    value: analytics.completedSessions },
+                        { label: 'Total minutes',     value: `${analytics.totalFocusMinutes} min` },
+                        {
+                          label: 'Avg session length',
+                          value: analytics.averageSessionLength > 0
+                            ? `${analytics.averageSessionLength} min`
+                            : '—',
+                        },
+                        {
+                          label: 'Total hours focused',
+                          value: `${(analytics.totalFocusMinutes / 60).toFixed(1)} hrs`,
+                        },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex justify-between items-center">
+                          <span className="text-sm text-[rgb(var(--text-muted))]">{label}</span>
+                          <span className="text-sm font-semibold text-[rgb(var(--text))]">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </div>
+
+                {/* AI Evening Summary */}
+                <div
+                  className="card p-5"
+                  style={{ borderLeft: '3px solid rgb(var(--brand))' }}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Moon size={16} className="text-violet-500" />
+                      <h2 className="text-sm font-semibold text-[rgb(var(--text))]">
+                        AI Evening Summary
+                      </h2>
+                      <div className="flex items-center gap-1 text-xs text-brand-500">
+                        <Bot size={12} />
+                        Gemini
+                      </div>
+                    </div>
+                    {!eveningSummary && (
+                      <Button size="sm" onClick={handleEveningSummary} loading={summaryLoading}>
+                        <Sparkles size={13} />
+                        Generate
+                      </Button>
+                    )}
+                  </div>
+
+                  {eveningSummary ? (
+                    <div className="space-y-4 animate-fade-in">
+                      <p className="text-sm text-[rgb(var(--text))] leading-relaxed">
+                        {eveningSummary.summary}
+                      </p>
+                      {eveningSummary.accomplishments.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wide mb-2">
+                            Accomplishments
+                          </p>
+                          <ul className="space-y-1">
+                            {eveningSummary.accomplishments.map((a, i) => (
+                              <li key={i} className="flex items-start gap-2 text-sm text-[rgb(var(--text))]">
+                                <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                                {a}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {eveningSummary.tomorrowPreview && (
+                        <div className="p-3 bg-[rgb(var(--surface-2))] rounded-lg">
+                          <p className="text-xs font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wide mb-1">
+                            Tomorrow
+                          </p>
+                          <p className="text-sm text-[rgb(var(--text))]">
+                            {eveningSummary.tomorrowPreview}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[rgb(var(--text-muted))]">
+                      Generate a personalized end-of-day summary based on your progress.
+                    </p>
+                  )}
+                </div>
+
+                {/* Insights */}
+                {analytics.totalTasks > 0 && (
+                  <div className="mt-6 p-5 rounded-xl border border-brand-500/20 bg-brand-500/5">
+                    <h2 className="text-sm font-semibold text-[rgb(var(--text))] mb-3">Insights</h2>
+                    <ul className="space-y-2 text-sm text-[rgb(var(--text-muted))]">
+                      {completionRate === 100 && (
+                        <li className="flex items-center gap-2">
+                          <Badge variant="success">100%</Badge>
+                          All tasks completed — great execution!
+                        </li>
+                      )}
+                      {completionRate < 50 && analytics.totalTasks > 3 && (
+                        <li className="flex items-center gap-2">
+                          <Badge variant="warning">Tip</Badge>
+                          Less than half your tasks are done — try a focus session.
+                        </li>
+                      )}
+                      {analytics.totalFocusMinutes >= 300 && (
+                        <li className="flex items-center gap-2">
+                          <Badge variant="info">Focus</Badge>
+                          {Math.round(analytics.totalFocusMinutes / 60)} hours of deep work logged.
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </nav>
-
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Analytics</h1>
-        <p className="text-slate-600 mb-8">Track your productivity and progress.</p>
-
-        {analytics && (
-          <>
-            {/* Key Metrics */}
-            <div className="grid md:grid-cols-2 gap-6 mb-12">
-              <MetricCard
-                title="Tasks Completed"
-                value={analytics.completedTasks}
-                total={analytics.totalTasks}
-                color="blue"
-                icon="✅"
-              />
-              <MetricCard
-                title="Focus Minutes"
-                value={analytics.totalFocusMinutes}
-                color="purple"
-                icon="⏱️"
-                suffix="min"
-              />
-              <MetricCard
-                title="Brain Dumps Organized"
-                value={analytics.brainDumpsOrganized}
-                color="green"
-                icon="🧠"
-              />
-              <MetricCard
-                title="Weekly Streak"
-                value={analytics.weeklyStreak}
-                color="amber"
-                icon="🔥"
-                suffix="days"
-              />
-            </div>
-
-            {/* Detailed Stats */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-xl p-8 border border-slate-200/50 shadow-sm">
-              <h2 className="text-xl font-bold text-slate-900 mb-8">
-                Detailed Breakdown
-              </h2>
-
-              <div className="space-y-6">
-                <StatRow
-                  label="Total Tasks Created"
-                  value={analytics.totalTasks}
-                  color="blue"
-                />
-                <StatRow
-                  label="Task Completion Rate"
-                  value={`${analytics.totalTasks > 0 ? Math.round((analytics.completedTasks / analytics.totalTasks) * 100) : 0}%`}
-                  color="green"
-                />
-                <StatRow
-                  label="Average Session Length"
-                  value={`${analytics.averageSessionLength} min`}
-                  color="purple"
-                />
-                <StatRow
-                  label="Focus Sessions"
-                  value={analytics.completedSessions}
-                  color="amber"
-                />
-              </div>
-            </div>
-
-            {/* Insights */}
-            <div className="mt-12 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-8 border border-blue-200/50">
-              <h2 className="text-xl font-bold text-blue-900 mb-6">
-                📊 Your Insights
-              </h2>
-
-              <div className="space-y-3 text-blue-900">
-                {analytics.totalTasks > 10 && (
-                  <p>
-                    💡 You're very productive! You've created{' '}
-                    {analytics.totalTasks} tasks.
-                  </p>
-                )}
-                {analytics.completedTasks === analytics.totalTasks && analytics.totalTasks > 0 && (
-                  <p>🎯 Impressive! You've completed all your tasks.</p>
-                )}
-                {analytics.totalFocusMinutes > 300 && (
-                  <p>
-                    ⏱️ You've spent {analytics.totalFocusMinutes} minutes in
-                    focused work. Keep it up!
-                  </p>
-                )}
-                {analytics.weeklyStreak >= 5 && (
-                  <p>
-                    🔥 Amazing streak! You've been consistent for{' '}
-                    {analytics.weeklyStreak} days.
-                  </p>
-                )}
-                {analytics.brainDumpsOrganized > 5 && (
-                  <p>
-                    🧠 You've organized {analytics.brainDumpsOrganized} brain
-                    dumps. Clarity is power!
-                  </p>
-                )}
-                {analytics.totalTasks === 0 && (
-                  <p>
-                    ✨ Get started by creating your first task via brain dump.
-                  </p>
-                )}
-              </div>
-            </div>
-          </>
-        )}
       </div>
-    </div>
-  );
-}
-
-function MetricCard({
-  title,
-  value,
-  total,
-  color,
-  icon,
-  suffix,
-}: {
-  title: string;
-  value: number;
-  total?: number;
-  color: 'blue' | 'purple' | 'green' | 'amber';
-  icon: string;
-  suffix?: string;
-}) {
-  const colorClasses = {
-    blue: 'bg-blue-50 border-blue-200 text-blue-900',
-    purple: 'bg-purple-50 border-purple-200 text-purple-900',
-    green: 'bg-green-50 border-green-200 text-green-900',
-    amber: 'bg-amber-50 border-amber-200 text-amber-900',
-  };
-
-  return (
-    <div className={`rounded-xl p-6 border border-${color}-200/50 ${colorClasses[color]}`}>
-      <div className="flex items-start justify-between mb-4">
-        <h3 className="font-medium">{title}</h3>
-        <span className="text-3xl">{icon}</span>
-      </div>
-      <p className="text-4xl font-bold">
-        {value}
-        {suffix && <span className="text-lg ml-2">{suffix}</span>}
-      </p>
-      {total && (
-        <p className="text-sm mt-2 opacity-75">of {total} total</p>
-      )}
-    </div>
-  );
-}
-
-function StatRow({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string | number;
-  color: string;
-}) {
-  const colorClasses: Record<string, string> = {
-    blue: 'bg-blue-100',
-    purple: 'bg-purple-100',
-    green: 'bg-green-100',
-    amber: 'bg-amber-100',
-  };
-
-  return (
-    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-      <p className="font-medium text-slate-700">{label}</p>
-      <span className={`px-4 py-2 rounded-lg font-bold ${colorClasses[color]}`}>
-        {value}
-      </span>
     </div>
   );
 }

@@ -2,38 +2,34 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { getToken, removeToken } from '@/lib/auth';
+import { Settings, Download, LogOut, Bot, Sparkles, Brain } from 'lucide-react';
 import { ApiClient } from '@/services/api';
-
-interface UserProfile {
-  email: string;
-}
+import { getToken, removeToken } from '@/lib/auth';
+import AppNav from '@/components/layout/AppNav';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Spinner from '@/components/ui/Spinner';
+import DarkModeToggle from '@/components/layout/DarkModeToggle';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [exportMsg, setExportMsg] = useState('');
+  const [defaultDuration, setDefaultDuration] = useState('25');
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push('/login');
-      return;
-    }
-
-    loadProfile();
+    if (!getToken()) { router.push('/login'); return; }
+    ApiClient.getMe()
+      .then((d) => setEmail(d.email))
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [router]);
 
-  async function loadProfile() {
-    try {
-      const data = await ApiClient.getMe();
-      setUser(data);
-    } catch (err) {
-      console.error('Failed to load profile:', err);
-    } finally {
-      setLoading(false);
-    }
+  function handleExport() {
+    setExportMsg('Data export is available in the full release. Your data is securely stored.');
+    setTimeout(() => setExportMsg(''), 4000);
   }
 
   function handleLogout() {
@@ -43,127 +39,194 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#faf9f7] via-[#f5f3f0] to-[#f0ede9] flex items-center justify-center">
-        <p className="text-slate-600">Loading...</p>
+      <div className="min-h-screen bg-page">
+        <AppNav />
+        <div className="md:pl-60 flex items-center justify-center min-h-screen">
+          <Spinner size="lg" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#faf9f7] via-[#f5f3f0] to-[#f0ede9]">
-      {/* Header */}
-      <nav className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link
-            href="/dashboard"
-            className="text-xl font-bold bg-gradient-to-r from-[#1e3a5f] to-[#2d5a8c] bg-clip-text text-transparent"
-          >
-            MindPad
-          </Link>
-          <Link
-            href="/dashboard"
-            className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
-          >
-            Dashboard
-          </Link>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-page">
+      <AppNav />
+      <div className="md:pl-60">
+        <div className="pt-14 md:pt-0">
+          <div className="max-w-2xl mx-auto px-4 md:px-8 py-8">
 
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <h1 className="text-3xl font-bold text-slate-900 mb-8">Settings</h1>
-
-        {/* Profile Section */}
-        {user && (
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl p-8 border border-slate-200/50 shadow-sm mb-8">
-            <h2 className="text-xl font-bold text-slate-900 mb-6">Profile</h2>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">
-                  Email
-                </label>
-                <p className="text-slate-900 font-medium">{user.email}</p>
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-9 h-9 rounded-xl bg-brand-500/10 flex items-center justify-center">
+                <Settings size={20} className="text-brand-500" />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">
-                  Account Status
-                </label>
-                <p className="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                  Active
+                <h1 className="text-2xl font-bold text-[rgb(var(--text))]">Settings</h1>
+                <p className="text-sm text-[rgb(var(--text-muted))]">
+                  Manage your account and preferences
                 </p>
               </div>
             </div>
+
+            {/* Profile */}
+            <Card title="Account" className="mb-4">
+              <div className="flex items-center gap-4">
+                <div
+                  className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
+                >
+                  {email ? email[0].toUpperCase() : '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[rgb(var(--text))] truncate">{email}</p>
+                  <Badge variant="success" className="mt-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Active
+                  </Badge>
+                </div>
+              </div>
+            </Card>
+
+            {/* Preferences */}
+            <Card title="Preferences" className="mb-4">
+              <div className="space-y-4">
+                {/* Dark mode */}
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <p className="text-sm font-medium text-[rgb(var(--text))]">Dark Mode</p>
+                    <p className="text-xs text-[rgb(var(--text-muted))] mt-0.5">
+                      Toggle between light and dark theme
+                    </p>
+                  </div>
+                  <DarkModeToggle />
+                </div>
+
+                {/* Default duration */}
+                <div className="flex items-center justify-between py-2 border-t border-[rgb(var(--border))]">
+                  <div>
+                    <p className="text-sm font-medium text-[rgb(var(--text))]">
+                      Default Focus Duration
+                    </p>
+                    <p className="text-xs text-[rgb(var(--text-muted))] mt-0.5">
+                      Starting duration for new Pomodoro sessions
+                    </p>
+                  </div>
+                  <select
+                    value={defaultDuration}
+                    onChange={(e) => setDefaultDuration(e.target.value)}
+                    className="h-9 px-3 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-sm text-[rgb(var(--text))] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  >
+                    <option value="25">25 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="90">90 minutes</option>
+                  </select>
+                </div>
+              </div>
+            </Card>
+
+            {/* AI preferences */}
+            <Card className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <Bot size={16} className="text-brand-500" />
+                  <h2 className="text-sm font-semibold text-[rgb(var(--text))]">AI Preferences</h2>
+                </div>
+                <Badge variant="info">Gemini AI</Badge>
+              </div>
+              <p className="text-xs text-[rgb(var(--text-muted))] mb-4">
+                Powered by Google Gemini. Extended configuration coming in a future update.
+              </p>
+              <div className="space-y-2">
+                {[
+                  {
+                    icon: Brain,
+                    label: 'Auto-organize brain dumps',
+                    sub: 'Extract tasks when you save a dump',
+                    enabled: true,
+                  },
+                  {
+                    icon: Sparkles,
+                    label: 'Smart task prioritization',
+                    sub: 'AI suggests priority levels based on context',
+                    enabled: true,
+                  },
+                  {
+                    icon: Sparkles,
+                    label: 'Daily briefs',
+                    sub: 'Morning and evening AI summaries',
+                    enabled: true,
+                  },
+                ].map(({ icon: Icon, label, sub, enabled }) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between p-3 bg-[rgb(var(--surface-2))] border border-[rgb(var(--border))] rounded-lg"
+                  >
+                    <div className="flex items-start gap-3">
+                      <Icon size={15} className="text-[rgb(var(--text-muted))] mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-[rgb(var(--text))]">{label}</p>
+                        <p className="text-xs text-[rgb(var(--text-muted))] mt-0.5">{sub}</p>
+                      </div>
+                    </div>
+                    <div
+                      className="w-9 h-5 rounded-full flex items-center px-0.5 flex-shrink-0 ml-4 cursor-default"
+                      style={{
+                        backgroundColor: enabled ? 'rgb(var(--brand))' : 'rgb(var(--border))',
+                      }}
+                    >
+                      <div
+                        className="w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ transform: enabled ? 'translateX(16px)' : 'translateX(0)' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Data export */}
+            <Card title="Data & Export" className="mb-4">
+              <p className="text-sm text-[rgb(var(--text-muted))] mb-4">
+                Export all your brain dumps, tasks, and focus sessions as JSON. Your data belongs to you.
+              </p>
+              <Button variant="ghost" onClick={handleExport}>
+                <Download size={15} />
+                Export My Data
+              </Button>
+              {exportMsg && (
+                <p
+                  className="mt-3 text-sm rounded-lg px-3 py-2"
+                  style={{
+                    backgroundColor: 'rgb(var(--brand) / 0.08)',
+                    borderLeft: '3px solid rgb(var(--brand))',
+                    color: 'rgb(var(--text))',
+                  }}
+                >
+                  {exportMsg}
+                </p>
+              )}
+            </Card>
+
+            {/* Danger zone */}
+            <div className="card p-5 border-red-200 dark:border-red-900">
+              <h2 className="text-sm font-semibold text-red-600 dark:text-red-400 mb-3">
+                Danger Zone
+              </h2>
+              <p className="text-sm text-[rgb(var(--text-muted))] mb-4">
+                Signing out will clear your local session. Your data is safely stored.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="danger" onClick={handleLogout}>
+                  <LogOut size={15} />
+                  Sign Out
+                </Button>
+                <Button variant="ghost" disabled>
+                  Delete Account
+                  <Badge variant="default" className="ml-1">Coming soon</Badge>
+                </Button>
+              </div>
+            </div>
+
           </div>
-        )}
-
-        {/* Preferences Section */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl p-8 border border-slate-200/50 shadow-sm mb-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">AI Preferences</h2>
-          <p className="text-slate-600 mb-6">
-            Customize how MindPad AI organizes your work and generates insights.
-          </p>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <p className="font-medium text-slate-900">Auto-organize brain dumps</p>
-                <p className="text-sm text-slate-600">
-                  Automatically organize new brain dumps
-                </p>
-              </div>
-              <input type="checkbox" defaultChecked className="w-5 h-5" />
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <p className="font-medium text-slate-900">Daily morning brief</p>
-                <p className="text-sm text-slate-600">
-                  Get AI-generated morning briefs
-                </p>
-              </div>
-              <input type="checkbox" defaultChecked className="w-5 h-5" />
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <p className="font-medium text-slate-900">Focus recommendations</p>
-                <p className="text-sm text-slate-600">
-                  AI recommends what to focus on next
-                </p>
-              </div>
-              <input type="checkbox" defaultChecked className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Data & Export Section */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl p-8 border border-slate-200/50 shadow-sm mb-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">Data & Export</h2>
-
-          <button className="w-full py-2 px-4 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium text-slate-900">
-            Export Your Data
-          </button>
-
-          <p className="text-sm text-slate-600 mt-4">
-            Download all your brain dumps, tasks, and analytics in JSON format.
-          </p>
-        </div>
-
-        {/* Account Section */}
-        <div className="bg-red-50 rounded-xl p-8 border border-red-200/50 shadow-sm">
-          <h2 className="text-xl font-bold text-red-900 mb-6">Account</h2>
-
-          <button
-            onClick={handleLogout}
-            className="w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-          >
-            Sign Out
-          </button>
-
-          <p className="text-sm text-red-800 mt-4">
-            You'll need to sign in again to access your account.
-          </p>
         </div>
       </div>
     </div>

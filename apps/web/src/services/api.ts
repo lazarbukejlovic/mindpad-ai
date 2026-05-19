@@ -25,6 +25,10 @@ export class ApiClient {
   ): Promise<T> {
     const url = `${API_URL}${endpoint}`;
 
+    // Add a short timeout so the UI can fall back quickly if the API is down
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
     try {
       const response = await fetch(url, {
         ...options,
@@ -32,7 +36,10 @@ export class ApiClient {
           ...this.getHeaders(),
           ...(options?.headers || {}),
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({
@@ -47,6 +54,7 @@ export class ApiClient {
 
       return response.json();
     } catch (error) {
+      clearTimeout(timeout);
       const message =
         error instanceof Error ? error.message : 'API request failed';
       throw new Error(message);
@@ -75,7 +83,11 @@ export class ApiClient {
   }
 
   static getMe() {
-    return this.request<{ email: string }>('/auth/me');
+    return this.request<{ email: string }>('/auth/me').catch(() => {
+      if (typeof window === 'undefined') return { email: '' } as any;
+      const me = JSON.parse(localStorage.getItem('md:me') || 'null');
+      return me || { email: '' };
+    });
   }
 
   // Brain Dumps
@@ -88,6 +100,15 @@ export class ApiClient {
     }>('/brain-dumps', {
       method: 'POST',
       body: JSON.stringify({ content }),
+    }).catch(() => {
+      // Fallback to localStorage when API is unavailable
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:brain_dumps';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const item = { id: Date.now().toString(), content, organized: false, createdAt: new Date().toISOString() };
+      existing.unshift(item);
+      localStorage.setItem(key, JSON.stringify(existing));
+      return item;
     });
   }
 
@@ -101,10 +122,71 @@ export class ApiClient {
         organized: boolean;
         createdAt: string;
       }>
-    >('/brain-dumps');
+    >('/brain-dumps').catch(() => {
+      if (typeof window === 'undefined') return [] as any;
+      const key = 'md:brain_dumps';
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    });
   }
 
   // AI
+  private static normalizeTaskPhrase(phrase: string) {
+    let text = phrase
+      .replace(/\s+/g, ' ')
+      .replace(/^(?:first|then|next|after that|also|finally)\b[,\s]*/i, '')
+      .replace(/^I\s+need\s+to\s+/i, '')
+      .replace(/^Need\s+to\s+/i, '')
+      .replace(/^Please\s+/i, '')
+      .replace(/^[^a-zA-Z0-9]+/g, '')
+      .replace(/[.!?]+$/, '')
+      .trim();
+
+    text = text.replace(/^(?:and|then|also)\s+/i, '');
+    text = text.replace(/\s+(?:to|and|the|with|for|after|before|or|but|so|then|first)$/i, '');
+    return text.trim();
+  }
+
+  private static splitActionClauses(text: string) {
+    return text
+      .split(/,\s*(?:and\s+)?|;\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  private static extractTasksFromContent(content: string) {
+    const cleaned = content.replace(/\s+/g, ' ').trim();
+    if (!cleaned) return [];
+
+    const sentences = cleaned.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleaned];
+    const tasks: string[] = [];
+
+    for (const sentence of sentences) {
+      const clauses = this.splitActionClauses(sentence.replace(/[.!?]+$/, '').trim());
+      for (const clause of clauses) {
+        if (tasks.length >= 6) break;
+        const normalized = this.normalizeTaskPhrase(clause);
+        if (!normalized) continue;
+        if (normalized.length < 3) continue;
+        if (tasks.includes(normalized)) continue;
+        tasks.push(normalized);
+      }
+      if (tasks.length >= 6) break;
+    }
+
+    if (tasks.length === 0) {
+      const fallback = cleaned
+        .split(/[\n;]+/)
+        .map((part) => this.normalizeTaskPhrase(part))
+        .filter(Boolean);
+      for (const phrase of fallback) {
+        if (tasks.length >= 6) break;
+        if (!tasks.includes(phrase)) tasks.push(phrase);
+      }
+    }
+
+    return tasks.slice(0, 6);
+  }
+
   static organizeBrainDump(content: string) {
     return this.request<{
       id: string;
@@ -116,10 +198,24 @@ export class ApiClient {
     }>('/ai/organize', {
       method: 'POST',
       body: JSON.stringify({ content }),
+    }).catch(() => {
+      const tasks = this.extractTasksFromContent(content);
+      const priorities = tasks.map(() => 'Medium');
+      const summary = tasks.length
+        ? `Extracted ${tasks.length} actionable task${tasks.length !== 1 ? 's' : ''}.`
+        : 'No tasks could be extracted from the input.';
+      return {
+        id: Date.now().toString(),
+        summary,
+        tasks,
+        priorities,
+        focusRecommendation: tasks.length ? `Start with: ${tasks[0]}` : 'No recommendation',
+        reasoning: 'Fallback organizer: sentence-based extraction',
+      } as any;
     });
   }
 
-  static getMorningBrief(context?: string) {
+   static getMorningBrief(context?: string) {
     return this.request<{
       briefText: string;
       topPriority: string;
@@ -128,6 +224,9 @@ export class ApiClient {
     }>('/ai/morning-brief', {
       method: 'POST',
       body: JSON.stringify({ context }),
+    }).catch(() => {
+      const briefText = context ? `Brief based on: ${context}` : 'No tasks available to summarize.';
+      return { briefText, topPriority: '', suggestedFocusTime: 25, keyThemesText: '' } as any;
     });
   }
 
@@ -159,6 +258,14 @@ export class ApiClient {
     }>('/tasks', {
       method: 'POST',
       body: JSON.stringify(data),
+    }).catch(() => {
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:tasks';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const item = { id: Date.now().toString(), title: data.title, description: data.description, priority: data.priority || 'medium', completed: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      existing.unshift(item);
+      localStorage.setItem(key, JSON.stringify(existing));
+      return item;
     });
   }
 
@@ -173,7 +280,11 @@ export class ApiClient {
         createdAt: string;
         updatedAt: string;
       }>
-    >('/tasks');
+    >('/tasks').catch(() => {
+      if (typeof window === 'undefined') return [] as any;
+      const key = 'md:tasks';
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    });
   }
 
   static updateTask(id: string, data: Partial<{ title: string; description: string; priority: 'low' | 'medium' | 'high'; completed: boolean }>) {
@@ -188,11 +299,25 @@ export class ApiClient {
     }>(`/tasks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }).catch(() => {
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:tasks';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const next = existing.map((t: any) => (t.id === id ? { ...t, ...data, updatedAt: new Date().toISOString() } : t));
+      localStorage.setItem(key, JSON.stringify(next));
+      return next.find((t: any) => t.id === id);
     });
   }
 
   static deleteTask(id: string) {
-    return this.request<void>(`/tasks/${id}`, { method: 'DELETE' });
+    return this.request<void>(`/tasks/${id}`, { method: 'DELETE' }).catch(() => {
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:tasks';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const next = existing.filter((t: any) => t.id !== id);
+      localStorage.setItem(key, JSON.stringify(next));
+      return undefined as void;
+    });
   }
 
   // Focus Sessions
@@ -206,6 +331,14 @@ export class ApiClient {
     }>('/focus-sessions', {
       method: 'POST',
       body: JSON.stringify(data),
+    }).catch(() => {
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:focus_sessions';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const item = { id: Date.now().toString(), taskId: data.taskId, duration: data.duration || 25, completed: false, createdAt: new Date().toISOString() };
+      existing.unshift(item);
+      localStorage.setItem(key, JSON.stringify(existing));
+      return item;
     });
   }
 
@@ -218,7 +351,49 @@ export class ApiClient {
         completed: boolean;
         createdAt: string;
       }>
-    >('/focus-sessions');
+    >('/focus-sessions').catch(() => {
+      if (typeof window === 'undefined') return [] as any;
+      const key = 'md:focus_sessions';
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    });
+  }
+
+  static deleteFocusSession(id: string) {
+    return this.request<void>(`/focus-sessions/${id}`, { method: 'DELETE' }).catch(() => {
+      if (typeof window === 'undefined') return undefined as void;
+      const key = 'md:focus_sessions';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      localStorage.setItem(key, JSON.stringify(existing.filter((s: any) => s.id !== id)));
+      return undefined as void;
+    });
+  }
+
+  static completeFocusSession(id: string) {
+    return this.request<{
+      id: string;
+      taskId?: string;
+      duration: number;
+      completed: boolean;
+      createdAt: string;
+    }>(`/focus-sessions/${id}/complete`, { method: 'PATCH' }).catch(() => {
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:focus_sessions';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const next = existing.map((s: any) => (s.id === id ? { ...s, completed: true } : s));
+      localStorage.setItem(key, JSON.stringify(next));
+      return next.find((s: any) => s.id === id);
+    });
+  }
+
+  static deleteBrainDump(id: string) {
+    return this.request<void>(`/brain-dumps/${id}`, { method: 'DELETE' }).catch(() => {
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:brain_dumps';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const next = existing.filter((d: any) => d.id !== id);
+      localStorage.setItem(key, JSON.stringify(next));
+      return undefined as void;
+    });
   }
 
   // Analytics
@@ -231,6 +406,35 @@ export class ApiClient {
       brainDumpsOrganized: number;
       weeklyStreak: number;
       averageSessionLength: number;
-    }>('/analytics/summary');
+    }>('/analytics/summary').catch(() => {
+      // Compute a basic summary from localStorage fallbacks
+      if (typeof window === 'undefined') return {
+        completedTasks: 0,
+        totalTasks: 0,
+        completedSessions: 0,
+        totalFocusMinutes: 0,
+        brainDumpsOrganized: 0,
+        weeklyStreak: 0,
+        averageSessionLength: 0,
+      };
+      const tasks = JSON.parse(localStorage.getItem('md:tasks') || '[]');
+      const sessions = JSON.parse(localStorage.getItem('md:focus_sessions') || '[]');
+      const dumps = JSON.parse(localStorage.getItem('md:brain_dumps') || '[]');
+      const completedTasks = tasks.filter((t: any) => t.completed === true || t.completed === 'true').length;
+      const totalTasks = tasks.length;
+      const completedSessions = sessions.filter((s: any) => s.completed === true || s.completed === 'true').length;
+      const totalFocusMinutes = sessions
+        .filter((s: any) => s.completed === true || s.completed === 'true')
+        .reduce((sum: number, s: any) => sum + (Number(s.duration) || 0), 0);
+      return {
+        completedTasks,
+        totalTasks,
+        completedSessions,
+        totalFocusMinutes,
+        brainDumpsOrganized: dumps.filter((d: any) => d.organized === true || d.organized === 'true').length,
+        weeklyStreak: 0,
+        averageSessionLength: completedSessions > 0 ? Math.round(totalFocusMinutes / completedSessions) : 0,
+      };
+    });
   }
 }

@@ -3,6 +3,7 @@ import {
   createBrainDump,
   getBrainDumps,
   organizeBrainDump,
+  deleteBrainDump,
 } from '../controllers/brainDumpController';
 import { AuthRequest } from '../middleware/auth';
 
@@ -43,6 +44,21 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Failed to get brain dumps';
+    res.status(400).json({ error: message });
+  }
+});
+
+router.delete('/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const dumpId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    await deleteBrainDump(req.userId, dumpId);
+    res.status(204).send();
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to delete brain dump';
     res.status(400).json({ error: message });
   }
 });

@@ -69,6 +69,17 @@ export async function getBrainDumps(userId: string) {
   }
 }
 
+export async function deleteBrainDump(userId: string, dumpId: string) {
+  if (isMongoConnected()) {
+    const result = await BrainDump.deleteOne({ _id: dumpId, userId });
+    if (result.deletedCount === 0) throw new Error('Brain dump not found');
+  } else {
+    const dump = memoryStore.getBrainDumpById(dumpId);
+    if (!dump || dump.userId !== userId) throw new Error('Brain dump not found');
+    memoryStore.deleteBrainDump(dumpId);
+  }
+}
+
 export async function organizeBrainDump(userId: string, content: string) {
   // Validate input
   const validated = OrganizeBrainDumpSchema.parse({ content });

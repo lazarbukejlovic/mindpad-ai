@@ -102,6 +102,31 @@ class MemoryStore {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
+  // Focus session update
+  updateFocusSession(id: string, data: Partial<StoredFocusSession>): void {
+    const session = this.focusSessions.get(id);
+    if (session) {
+      this.focusSessions.set(id, { ...session, ...data });
+    }
+  }
+
+  getFocusSessionById(id: string): StoredFocusSession | null {
+    return this.focusSessions.get(id) || null;
+  }
+
+  deleteFocusSession(id: string): void {
+    this.focusSessions.delete(id);
+  }
+
+  // Brain dump delete
+  deleteBrainDump(id: string): void {
+    this.brainDumps.delete(id);
+  }
+
+  getBrainDumpById(id: string): StoredBrainDump | null {
+    return this.brainDumps.get(id) || null;
+  }
+
   // Analytics
   getAnalyticsSummary(userId: string) {
     const userTasks = this.getTasksByUserId(userId);
@@ -110,14 +135,32 @@ class MemoryStore {
 
     const completedTasks = userTasks.filter((t) => t.completed).length;
     const completedSessions = userSessions.filter((s) => s.completed).length;
-    const totalFocusMinutes = userSessions.reduce((sum, s) => sum + s.duration, 0);
+    const totalFocusMinutes = userSessions.filter((s) => s.completed).reduce((sum, s) => sum + s.duration, 0);
+    const averageSessionLength =
+      completedSessions > 0 ? Math.round(totalFocusMinutes / completedSessions) : 0;
+
+    // Compute streak: count consecutive days (from today backwards) with at least one task completed
+    const now = new Date();
+    let weeklyStreak = 0;
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(now);
+      day.setDate(now.getDate() - i);
+      const dayStr = day.toISOString().slice(0, 10);
+      const hasActivity = userTasks.some(
+        (t) => t.completed && t.updatedAt.toISOString().slice(0, 10) === dayStr
+      );
+      if (hasActivity) weeklyStreak++;
+      else if (i > 0) break;
+    }
 
     return {
       completedTasks,
       totalTasks: userTasks.length,
       completedSessions,
       totalFocusMinutes,
-      brainDumpsOrganized: userBrainDumps.length,
+      brainDumpsOrganized: userBrainDumps.filter((bd) => !!bd.summary).length,
+      weeklyStreak,
+      averageSessionLength,
     };
   }
 }

@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/env';
 
 interface OrganizeResult {
@@ -23,70 +23,120 @@ interface EveningSummaryResult {
   tomorrowPreview: string;
 }
 
-function getRealisticFallback(
-  brainDump: string
-): OrganizeResult {
-  // Generate realistic fallback output based on the brain dump content
-  const lines = brainDump.split('\n').filter((l) => l.trim());
-  const wordCount = brainDump.split(/\s+/).length;
+function stripCodeFence(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+}
 
-  // Extract potential tasks from common patterns
-  const potentialTasks: string[] = [];
-  lines.forEach((line) => {
-    if (
-      line.match(/^[-•*]/i) ||
-      line.match(/\b(need|need to|should|must|have to)\b/i)
-    ) {
-      potentialTasks.push(line.replace(/^[-•*]\s*/, '').substring(0, 60));
+function extractJson(text: string): string | null {
+  const stripped = stripCodeFence(text);
+  const match = stripped.match(/\{[\s\S]*\}/);
+  return match ? match[0] : null;
+}
+
+function normalizeClause(clause: string): string {
+  let text = clause
+    .replace(/\s+/g, ' ')
+    .replace(/^(?:first|then|next|also|finally|after that)\b[,\s]*/i, '')
+    .replace(/^I\s+need\s+to\s+/i, '')
+    .replace(/^(?:need|needs)\s+to\s+/i, '')
+    .replace(/^(?:you\s+should|we\s+should|should)\s+/i, '')
+    .replace(/^please\s+/i, '')
+    .replace(/^[^a-zA-Z0-9]+/, '')
+    .replace(/[.!?]+$/, '')
+    .trim();
+  // Strip dangling connector words at end (incomplete split artifact)
+  text = text.replace(/\s+(?:to|and|the|with|for|after|before|or|but|so|then|first|a|an)$/i, '').trim();
+  if (!text || !/^[a-zA-Z]/i.test(text)) return '';
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function extractTasksLocal(content: string): string[] {
+  const cleaned = content.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return [];
+
+  const sentences = cleaned.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [cleaned];
+  const tasks: string[] = [];
+
+  for (const rawSentence of sentences) {
+    const clauses = rawSentence
+      .replace(/[.!?]+$/, '')
+      .trim()
+      .split(/,\s*(?:and\s+)?|;\s*/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+    for (const clause of clauses) {
+      const normalized = normalizeClause(clause);
+      if (!normalized || normalized.length < 4) continue;
+      if (tasks.some((t) => t.toLowerCase() === normalized.toLowerCase())) continue;
+      tasks.push(normalized);
+      if (tasks.length >= 6) break;
     }
+    if (tasks.length >= 6) break;
+  }
+
+  if (tasks.length === 0) {
+    // Last-resort: newline or semicolon split
+    const parts = content.split(/[\n;]+/).map((p) => normalizeClause(p)).filter(Boolean);
+    for (const p of parts) {
+      if (!tasks.includes(p)) tasks.push(p);
+      if (tasks.length >= 6) break;
+    }
+  }
+
+  return tasks;
+}
+
+function getRealisticFallback(brainDump: string): OrganizeResult {
+  const tasks = extractTasksLocal(brainDump);
+  const defaultTasks = [
+    'Review and prioritize main objectives',
+    'Break down complex tasks into steps',
+    'Schedule focused work blocks',
+  ];
+  const finalTasks = tasks.length > 0 ? tasks : defaultTasks;
+
+  const priorities = finalTasks.map((task) => {
+    if (/urgent|asap|today|deadline|client|prod|critical|fix|emergency/i.test(task)) return 'High';
+    if (/review|test|verify|check|confirm/i.test(task)) return 'Medium';
+    return 'Medium';
   });
 
   return {
     summary:
-      potentialTasks.length > 0
-        ? `You've outlined ${potentialTasks.length} key areas that need attention. ${wordCount > 50 ? 'Your thoughts are detailed and focused.' : 'Consider expanding on these points for clarity.'}`
+      tasks.length > 0
+        ? `You've outlined ${tasks.length} actionable task${tasks.length !== 1 ? 's' : ''}. Starting with the highest-priority item is recommended.`
         : 'Your notes contain several interconnected thoughts. Focus on the most urgent items first.',
-    tasks:
-      potentialTasks.length > 0
-        ? potentialTasks.slice(0, 5)
-        : [
-            'Review and prioritize main objectives',
-            'Break down complex tasks into steps',
-            'Schedule focused work blocks',
-          ],
-    priorities:
-      potentialTasks.length > 0
-        ? ['High', 'Medium', 'Medium', 'Low', 'Low'].slice(0, Math.min(5, potentialTasks.length))
-        : ['High', 'Medium', 'Low'],
+    tasks: finalTasks,
+    priorities,
     focusRecommendation:
-      potentialTasks.length > 0
-        ? potentialTasks[0]
+      finalTasks.length > 0
+        ? `Start with: ${finalTasks[0]}`
         : 'Start with the most time-sensitive or impactful task.',
     reasoning:
-      'Based on your brain dump, these are the most actionable items. This fallback is generated without AI—organize with API key for enhanced suggestions.',
+      'Sentence-based extraction fallback. Add a GEMINI_API_KEY to apps/api/.env for AI-powered extraction.',
   };
 }
 
-export async function organizeWithAI(
-  brainDump: string
-): Promise<OrganizeResult> {
-  // If no API key, return realistic fallback
-  if (!config.anthropicApiKey) {
+function getGeminiClient() {
+  return new GoogleGenerativeAI(config.geminiApiKey);
+}
+
+export async function organizeWithAI(brainDump: string): Promise<OrganizeResult> {
+  if (!config.geminiApiKey) {
     return getRealisticFallback(brainDump);
   }
 
   try {
-    const client = new Anthropic({
-      apiKey: config.anthropicApiKey,
-    });
+    const genAI = getGeminiClient();
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    } catch {
+      model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    }
 
-    const message = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: `You are a productivity coach helping organize scattered thoughts into actionable tasks.
+    const prompt = `You are a productivity coach helping organize scattered thoughts into actionable tasks.
 
 Given this brain dump:
 """
@@ -100,23 +150,16 @@ Respond with a JSON object containing:
 4. "focusRecommendation": The single most important task to focus on first
 5. "reasoning": Brief explanation of why you prioritized this way
 
-Return ONLY valid JSON, no markdown.`,
-        },
-      ],
-    });
+Return ONLY valid JSON, no markdown fences.`;
 
-    const responseText =
-      message.content[0].type === 'text' ? message.content[0].text : '';
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    const jsonStr = extractJson(responseText);
 
-    // Extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return getRealisticFallback(brainDump);
-    }
+    if (!jsonStr) return getRealisticFallback(brainDump);
 
-    const parsed = JSON.parse(jsonMatch[0]) as OrganizeResult;
+    const parsed = JSON.parse(jsonStr) as OrganizeResult;
 
-    // Validate structure
     if (
       !parsed.summary ||
       !Array.isArray(parsed.tasks) ||
@@ -134,32 +177,28 @@ Return ONLY valid JSON, no markdown.`,
   }
 }
 
-export async function generateMorningBrief(
-  userContext: string
-): Promise<MorningBriefResult> {
-  if (!config.anthropicApiKey) {
-    return {
-      briefText:
-        'Welcome back! Focus on your highest-priority task first, then tackle secondary items. Break your day into focused blocks with short breaks in between.',
-      topPriority: userContext || 'Review your main objectives for today',
-      suggestedFocusTime: 90,
-      keyThemesText:
-        'Productivity, focused work, achieving key goals. Consider your energy levels and schedule breaks accordingly.',
-    };
-  }
+export async function generateMorningBrief(userContext: string): Promise<MorningBriefResult> {
+  const fallback: MorningBriefResult = {
+    briefText:
+      'Welcome back! Focus on your highest-priority task first, then tackle secondary items. Break your day into focused blocks with short breaks in between.',
+    topPriority: userContext || 'Review your main objectives for today',
+    suggestedFocusTime: 90,
+    keyThemesText:
+      'Productivity, focused work, achieving key goals. Consider your energy levels and schedule breaks accordingly.',
+  };
+
+  if (!config.geminiApiKey) return fallback;
 
   try {
-    const client = new Anthropic({
-      apiKey: config.anthropicApiKey,
-    });
+    const genAI = getGeminiClient();
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    } catch {
+      model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    }
 
-    const message = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 512,
-      messages: [
-        {
-          role: 'user',
-          content: `Create a brief morning productivity brief based on this context:
+    const prompt = `Create a brief morning productivity brief based on this context:
 ${userContext || 'General productivity advice'}
 
 Return JSON with:
@@ -168,82 +207,59 @@ Return JSON with:
 - suggestedFocusTime: Minutes for first focus block (60-120)
 - keyThemesText: Key themes to keep in mind
 
-Return ONLY valid JSON.`,
-        },
-      ],
-    });
+Return ONLY valid JSON, no markdown fences.`;
 
-    const responseText =
-      message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    const jsonStr = extractJson(responseText);
 
-    if (!jsonMatch) {
-      return {
-        briefText:
-          'Good morning! Focus on your highest-priority task first.',
-        topPriority: 'Main objective',
-        suggestedFocusTime: 90,
-        keyThemesText: 'Productive focus, steady progress.',
-      };
-    }
+    if (!jsonStr) return fallback;
 
-    const parsed = JSON.parse(jsonMatch[0]) as MorningBriefResult;
+    const parsed = JSON.parse(jsonStr) as MorningBriefResult;
     return {
-      briefText: parsed.briefText || 'Good morning!',
-      topPriority: parsed.topPriority || 'Main objective',
+      briefText: parsed.briefText || fallback.briefText,
+      topPriority: parsed.topPriority || fallback.topPriority,
       suggestedFocusTime: parsed.suggestedFocusTime || 90,
-      keyThemesText: parsed.keyThemesText || 'Productivity and focus.',
+      keyThemesText: parsed.keyThemesText || fallback.keyThemesText,
     };
   } catch (error) {
     console.error('Morning brief generation error:', error);
-    return {
-      briefText: 'Good morning! Time to focus on what matters.',
-      topPriority: 'Your main objective',
-      suggestedFocusTime: 90,
-      keyThemesText: 'Focused work and progress.',
-    };
+    return fallback;
   }
 }
 
-export async function generateEveningSummary(
-  accomplishments: string[]
-): Promise<EveningSummaryResult> {
-  if (!config.anthropicApiKey) {
-    return {
-      summary:
-        accomplishments.length > 0
-          ? `You completed ${accomplishments.length} tasks today. Great progress!`
-          : 'Today was a productive day. Every step forward counts.',
-      accomplishments:
-        accomplishments.length > 0
-          ? accomplishments
-          : ['Made progress on key objectives'],
-      lessonsLearned: [
-        'Focus works best in dedicated blocks',
-        'Prioritization saves time and energy',
-      ],
-      tomorrowPreview:
-        'Start fresh tomorrow with the top 3 priorities. Rest well tonight.',
-    };
-  }
+export async function generateEveningSummary(accomplishments: string[]): Promise<EveningSummaryResult> {
+  const fallback: EveningSummaryResult = {
+    summary:
+      accomplishments.length > 0
+        ? `You completed ${accomplishments.length} tasks today. Great progress!`
+        : 'Today was a productive day. Every step forward counts.',
+    accomplishments:
+      accomplishments.length > 0 ? accomplishments : ['Made progress on key objectives'],
+    lessonsLearned: [
+      'Focus works best in dedicated blocks',
+      'Prioritization saves time and energy',
+    ],
+    tomorrowPreview: 'Start fresh tomorrow with the top 3 priorities. Rest well tonight.',
+  };
+
+  if (!config.geminiApiKey) return fallback;
 
   try {
-    const client = new Anthropic({
-      apiKey: config.anthropicApiKey,
-    });
+    const genAI = getGeminiClient();
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    } catch {
+      model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    }
 
     const accomplishmentList =
       accomplishments.length > 0
         ? accomplishments.join('\n- ')
         : 'Made progress throughout the day';
 
-    const message = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 512,
-      messages: [
-        {
-          role: 'user',
-          content: `Create an evening summary based on these accomplishments:
+    const prompt = `Create an evening summary based on these accomplishments:
 - ${accomplishmentList}
 
 Return JSON with:
@@ -252,43 +268,27 @@ Return JSON with:
 - lessonsLearned: Array of insights (2-3)
 - tomorrowPreview: One-line tomorrow preview
 
-Return ONLY valid JSON.`,
-        },
-      ],
-    });
+Return ONLY valid JSON, no markdown fences.`;
 
-    const responseText =
-      message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    const jsonStr = extractJson(responseText);
 
-    if (!jsonMatch) {
-      return {
-        summary: 'Great work today!',
-        accomplishments: accomplishments || ['Productive day'],
-        lessonsLearned: ['Progress requires focused effort', 'Rest is essential'],
-        tomorrowPreview: 'Start tomorrow with clear priorities.',
-      };
-    }
+    if (!jsonStr) return fallback;
 
-    const parsed = JSON.parse(jsonMatch[0]) as EveningSummaryResult;
+    const parsed = JSON.parse(jsonStr) as EveningSummaryResult;
     return {
-      summary: parsed.summary || 'Great work today!',
+      summary: parsed.summary || fallback.summary,
       accomplishments: Array.isArray(parsed.accomplishments)
         ? parsed.accomplishments
-        : accomplishments || ['Productive work completed'],
+        : accomplishments.length > 0 ? accomplishments : fallback.accomplishments,
       lessonsLearned: Array.isArray(parsed.lessonsLearned)
         ? parsed.lessonsLearned
-        : ['Focus is powerful', 'Rest enables performance'],
-      tomorrowPreview:
-        parsed.tomorrowPreview || 'Start fresh tomorrow with clear priorities.',
+        : fallback.lessonsLearned,
+      tomorrowPreview: parsed.tomorrowPreview || fallback.tomorrowPreview,
     };
   } catch (error) {
     console.error('Evening summary generation error:', error);
-    return {
-      summary: 'Excellent work today!',
-      accomplishments: accomplishments || ['Productive day'],
-      lessonsLearned: ['Consistency drives progress', 'Balance work and rest'],
-      tomorrowPreview: 'Tomorrow: Focus on top 3 priorities.',
-    };
+    return fallback;
   }
 }
