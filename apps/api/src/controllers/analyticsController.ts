@@ -24,7 +24,7 @@ export async function getAnalyticsSummary(userId: string) {
       day.setDate(now.getDate() - i);
       const dayStr = day.toISOString().slice(0, 10);
       const hasActivity = tasks.some(
-        (t) => t.completed && (t.updatedAt as Date).toISOString().slice(0, 10) === dayStr
+        (t) => t.completed && ((t.completedAt ?? t.updatedAt) as Date).toISOString().slice(0, 10) === dayStr
       );
       if (hasActivity) weeklyStreak++;
       else if (i > 0) break;

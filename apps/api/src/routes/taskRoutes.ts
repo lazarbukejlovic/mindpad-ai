@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import {
   createTask,
+  createTasksBulk,
   getTasks,
   updateTask,
   deleteTask,
@@ -8,6 +9,20 @@ import {
 import { AuthRequest } from '../middleware/auth';
 
 const router = Router();
+
+router.post('/bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const tasks = await createTasksBulk(req.userId, req.body);
+    res.status(201).json({ tasks });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to create tasks';
+    res.status(400).json({ error: message });
+  }
+});
 
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {

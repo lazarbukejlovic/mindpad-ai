@@ -5,7 +5,7 @@ interface KPICardProps {
   value: number | string;
   sub?: string;
   icon: LucideIcon;
-  iconClassName?: string;
+  accentColor?: string;
 }
 
 export default function KPICard({
@@ -13,18 +13,52 @@ export default function KPICard({
   value,
   sub,
   icon: Icon,
-  iconClassName = 'text-brand-500',
+  accentColor = '#00a0ff',
 }: KPICardProps) {
   return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium uppercase tracking-wide text-[rgb(var(--text-muted))]">
+    <div style={{
+      background: 'rgba(5, 10, 22, 0.80)',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      border: '1px solid rgba(0, 160, 255, 0.14)',
+      borderRadius: '1rem',
+      padding: '18px 20px 16px',
+      boxShadow: '0 4px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.03)',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* top accent line using the card's accent color */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+        background: `linear-gradient(90deg, transparent, ${accentColor}66, transparent)`,
+      }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
+          color: 'rgba(100, 140, 190, 0.75)',
+        }}>
           {label}
         </span>
-        <Icon size={18} className={iconClassName} />
+        <div style={{
+          width: 30, height: 30, borderRadius: 10, flexShrink: 0,
+          background: `${accentColor}18`,
+          border: `1px solid ${accentColor}33`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: `0 0 10px ${accentColor}1a`,
+        }}>
+          <Icon size={14} style={{ color: accentColor }} />
+        </div>
       </div>
-      <p className="text-2xl font-bold text-[rgb(var(--text))]">{value}</p>
-      {sub && <p className="text-xs mt-0.5 text-[rgb(var(--text-muted))]">{sub}</p>}
+      <p style={{
+        fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1,
+        color: 'rgba(220, 235, 255, 0.97)', fontVariantNumeric: 'tabular-nums',
+        marginBottom: sub ? 6 : 0,
+      }}>
+        {value}
+      </p>
+      {sub && (
+        <p style={{ fontSize: 11, color: 'rgba(80, 110, 160, 0.8)', lineHeight: 1.4 }}>{sub}</p>
+      )}
     </div>
   );
 }

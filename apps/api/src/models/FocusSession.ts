@@ -5,6 +5,8 @@ export interface IFocusSession extends Document {
   taskId?: string;
   duration: number; // in minutes
   completed: boolean;
+  startedAt: Date;
+  completedAt?: Date;
   createdAt: Date;
 }
 
@@ -19,11 +21,18 @@ const focusSessionSchema = new Schema<IFocusSession>(
     duration: {
       type: Number,
       required: true,
-      default: 25, // default Pomodoro
+      default: 25,
     },
     completed: {
       type: Boolean,
       default: false,
+    },
+    startedAt: {
+      type: Date,
+      default: () => new Date(),
+    },
+    completedAt: {
+      type: Date,
     },
   },
   {

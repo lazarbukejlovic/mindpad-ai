@@ -2,28 +2,58 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Download, LogOut, Bot, Sparkles, Brain } from 'lucide-react';
+import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck } from 'lucide-react';
 import { ApiClient } from '@/services/api';
 import { getToken, removeToken } from '@/lib/auth';
 import AppNav from '@/components/layout/AppNav';
-import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import DarkModeToggle from '@/components/layout/DarkModeToggle';
+import NeuralBackground from '@/components/ui/NeuralBackground';
+
+const panel: React.CSSProperties = {
+  background: 'rgba(5, 10, 22, 0.78)',
+  backdropFilter: 'blur(24px)',
+  WebkitBackdropFilter: 'blur(24px)',
+  border: '1px solid rgba(0,160,255,0.12)',
+  borderRadius: '1rem',
+};
+
+function SettingsCard({ title, children, icon: Icon }: {
+  title: string; children: React.ReactNode; icon?: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+}) {
+  return (
+    <div style={{ ...panel, marginBottom: 16 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 9,
+        padding: '14px 20px 12px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+      }}>
+        {Icon && <Icon size={15} style={{ color: '#40b8ff' }} />}
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>{title}</span>
+      </div>
+      <div style={{ padding: '16px 20px 20px' }}>{children}</div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [exportMsg, setExportMsg] = useState('');
+  const [email, setEmail]                   = useState('');
+  const [loading, setLoading]               = useState(true);
+  const [exportMsg, setExportMsg]           = useState('');
   const [defaultDuration, setDefaultDuration] = useState('25');
 
   useEffect(() => {
     if (!getToken()) { router.push('/login'); return; }
     ApiClient.getMe()
-      .then((d) => setEmail(d.email))
-      .catch(console.error)
+      .then(d => setEmail(d.email))
+      .catch(() => {
+        try {
+          const cached = JSON.parse(localStorage.getItem('md:me') || 'null');
+          if (cached?.email) setEmail(cached.email);
+        } catch {}
+      })
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -37,11 +67,18 @@ export default function SettingsPage() {
     router.push('/');
   }
 
+  const selectStyle: React.CSSProperties = {
+    height: 38, padding: '0 12px', borderRadius: 9,
+    border: '1px solid rgba(0,160,255,0.15)', background: 'rgba(0,0,0,0.4)',
+    color: 'rgba(180,210,240,0.9)', fontSize: 13, outline: 'none', cursor: 'pointer',
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-page">
+      <div className="min-h-screen" style={{ background: 'rgb(3, 6, 14)', position: 'relative' }}>
+        <NeuralBackground />
         <AppNav />
-        <div className="md:pl-60 flex items-center justify-center min-h-screen">
+        <div className="md:pl-60" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
           <Spinner size="lg" />
         </div>
       </div>
@@ -49,180 +86,181 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-page">
+    <div className="min-h-screen" style={{ background: 'rgb(3, 6, 14)', position: 'relative' }}>
+      <NeuralBackground />
       <AppNav />
-      <div className="md:pl-60">
+      <div className="md:pl-60" style={{ position: 'relative', zIndex: 1 }}>
         <div className="pt-14 md:pt-0">
           <div className="max-w-2xl mx-auto px-4 md:px-8 py-8">
 
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-9 h-9 rounded-xl bg-brand-500/10 flex items-center justify-center">
-                <Settings size={20} className="text-brand-500" />
+            {/* ── Header ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 32 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                background: 'rgba(0,130,255,0.12)', border: '1px solid rgba(0,160,255,0.25)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 20px rgba(0,120,255,0.15)',
+              }}>
+                <Settings size={21} style={{ color: '#40b8ff' }} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-[rgb(var(--text))]">Settings</h1>
-                <p className="text-sm text-[rgb(var(--text-muted))]">
+                <h1 style={{
+                  fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em',
+                  background: 'linear-gradient(135deg, #d8eeff 30%, #6098c8 100%)',
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 3,
+                }}>Settings</h1>
+                <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.85)' }}>
                   Manage your account and preferences
                 </p>
               </div>
             </div>
 
-            {/* Profile */}
-            <Card title="Account" className="mb-4">
-              <div className="flex items-center gap-4">
-                <div
-                  className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
-                >
+            {/* ── Account ── */}
+            <SettingsCard title="Account" icon={ShieldCheck}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
+                  background: 'linear-gradient(135deg, #0080d8, #0055a8)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 20, fontWeight: 800, color: '#fff',
+                  boxShadow: '0 0 24px rgba(0,120,255,0.25)',
+                }}>
                   {email ? email[0].toUpperCase() : '?'}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[rgb(var(--text))] truncate">{email}</p>
-                  <Badge variant="success" className="mt-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    Active
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: 'rgba(200,220,245,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
+                    {email}
+                  </p>
+                  <Badge variant="success">
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 5px rgba(34,197,94,0.7)' }} />
+                    &nbsp;Active
                   </Badge>
                 </div>
               </div>
-            </Card>
+            </SettingsCard>
 
-            {/* Preferences */}
-            <Card title="Preferences" className="mb-4">
-              <div className="space-y-4">
-                {/* Dark mode */}
-                <div className="flex items-center justify-between py-2">
+            {/* ── Preferences ── */}
+            <SettingsCard title="Preferences" icon={Settings}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0' }}>
                   <div>
-                    <p className="text-sm font-medium text-[rgb(var(--text))]">Dark Mode</p>
-                    <p className="text-xs text-[rgb(var(--text-muted))] mt-0.5">
-                      Toggle between light and dark theme
-                    </p>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: 'rgba(180,210,240,0.9)', marginBottom: 3 }}>Dark Mode</p>
+                    <p style={{ fontSize: 12, color: 'rgba(70,100,140,0.75)' }}>Toggle between light and dark theme</p>
                   </div>
                   <DarkModeToggle />
                 </div>
-
-                {/* Default duration */}
-                <div className="flex items-center justify-between py-2 border-t border-[rgb(var(--border))]">
+                <div style={{ height: 1, background: 'rgba(0,160,255,0.07)', margin: '4px 0' }} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
                   <div>
-                    <p className="text-sm font-medium text-[rgb(var(--text))]">
-                      Default Focus Duration
-                    </p>
-                    <p className="text-xs text-[rgb(var(--text-muted))] mt-0.5">
-                      Starting duration for new Pomodoro sessions
-                    </p>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: 'rgba(180,210,240,0.9)', marginBottom: 3 }}>Default Focus Duration</p>
+                    <p style={{ fontSize: 12, color: 'rgba(70,100,140,0.75)' }}>Starting duration for new Pomodoro sessions</p>
                   </div>
-                  <select
-                    value={defaultDuration}
-                    onChange={(e) => setDefaultDuration(e.target.value)}
-                    className="h-9 px-3 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-sm text-[rgb(var(--text))] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-                  >
+                  <select value={defaultDuration} onChange={e => setDefaultDuration(e.target.value)} style={selectStyle}>
                     <option value="25">25 minutes</option>
                     <option value="45">45 minutes</option>
                     <option value="90">90 minutes</option>
                   </select>
                 </div>
               </div>
-            </Card>
+            </SettingsCard>
 
-            {/* AI preferences */}
-            <Card className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <Bot size={16} className="text-brand-500" />
-                  <h2 className="text-sm font-semibold text-[rgb(var(--text))]">AI Preferences</h2>
+            {/* ── AI Preferences ── */}
+            <div style={{ ...panel, marginBottom: 16 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '14px 20px 12px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Bot size={15} style={{ color: '#40b8ff' }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>AI Preferences</span>
                 </div>
-                <Badge variant="info">Gemini AI</Badge>
+                <Badge variant="info">MindPad AI</Badge>
               </div>
-              <p className="text-xs text-[rgb(var(--text-muted))] mb-4">
-                Powered by Google Gemini. Extended configuration coming in a future update.
-              </p>
-              <div className="space-y-2">
-                {[
-                  {
-                    icon: Brain,
-                    label: 'Auto-organize brain dumps',
-                    sub: 'Extract tasks when you save a dump',
-                    enabled: true,
-                  },
-                  {
-                    icon: Sparkles,
-                    label: 'Smart task prioritization',
-                    sub: 'AI suggests priority levels based on context',
-                    enabled: true,
-                  },
-                  {
-                    icon: Sparkles,
-                    label: 'Daily briefs',
-                    sub: 'Morning and evening AI summaries',
-                    enabled: true,
-                  },
-                ].map(({ icon: Icon, label, sub, enabled }) => (
-                  <div
-                    key={label}
-                    className="flex items-center justify-between p-3 bg-[rgb(var(--surface-2))] border border-[rgb(var(--border))] rounded-lg"
-                  >
-                    <div className="flex items-start gap-3">
-                      <Icon size={15} className="text-[rgb(var(--text-muted))] mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-[rgb(var(--text))]">{label}</p>
-                        <p className="text-xs text-[rgb(var(--text-muted))] mt-0.5">{sub}</p>
+              <div style={{ padding: '14px 20px 18px' }}>
+                <p style={{ fontSize: 12, color: 'rgba(70,100,140,0.75)', marginBottom: 14 }}>
+                  AI-powered features. Extended configuration coming in a future update.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { icon: Brain,    label: 'Auto-organize brain dumps',      sub: 'Extract tasks when you save a dump',          enabled: true },
+                    { icon: Sparkles, label: 'Smart task prioritization',       sub: 'AI suggests priority levels based on context', enabled: true },
+                    { icon: Sparkles, label: 'Daily briefs',                    sub: 'Morning and evening AI summaries',            enabled: true },
+                  ].map(({ icon: Icon, label, sub, enabled }) => (
+                    <div key={label} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '12px 14px', borderRadius: 10,
+                      background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0,160,255,0.09)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <Icon size={14} style={{ color: 'rgba(90,130,180,0.75)', marginTop: 2, flexShrink: 0 }} />
+                        <div>
+                          <p style={{ fontSize: 13, fontWeight: 500, color: 'rgba(180,210,240,0.88)', marginBottom: 2 }}>{label}</p>
+                          <p style={{ fontSize: 11, color: 'rgba(70,100,140,0.7)' }}>{sub}</p>
+                        </div>
+                      </div>
+                      {/* Toggle indicator */}
+                      <div style={{
+                        width: 36, height: 20, borderRadius: 99, flexShrink: 0, marginLeft: 16,
+                        background: enabled ? 'rgba(0,140,255,0.8)' : 'rgba(40,60,100,0.5)',
+                        display: 'flex', alignItems: 'center', padding: '0 2px',
+                        boxShadow: enabled ? '0 0 10px rgba(0,160,255,0.3)' : 'none',
+                      }}>
+                        <div style={{
+                          width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+                          transform: enabled ? 'translateX(16px)' : 'translateX(0)',
+                          transition: 'transform 0.2s',
+                        }} />
                       </div>
                     </div>
-                    <div
-                      className="w-9 h-5 rounded-full flex items-center px-0.5 flex-shrink-0 ml-4 cursor-default"
-                      style={{
-                        backgroundColor: enabled ? 'rgb(var(--brand))' : 'rgb(var(--border))',
-                      }}
-                    >
-                      <div
-                        className="w-4 h-4 rounded-full bg-white shadow transition-transform"
-                        style={{ transform: enabled ? 'translateX(16px)' : 'translateX(0)' }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </Card>
+            </div>
 
-            {/* Data export */}
-            <Card title="Data & Export" className="mb-4">
-              <p className="text-sm text-[rgb(var(--text-muted))] mb-4">
+            {/* ── Data & Export ── */}
+            <SettingsCard title="Data & Export" icon={Download}>
+              <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.8)', marginBottom: 14 }}>
                 Export all your brain dumps, tasks, and focus sessions as JSON. Your data belongs to you.
               </p>
               <Button variant="ghost" onClick={handleExport}>
-                <Download size={15} />
-                Export My Data
+                <Download size={14} /> Export My Data
               </Button>
               {exportMsg && (
-                <p
-                  className="mt-3 text-sm rounded-lg px-3 py-2"
-                  style={{
-                    backgroundColor: 'rgb(var(--brand) / 0.08)',
-                    borderLeft: '3px solid rgb(var(--brand))',
-                    color: 'rgb(var(--text))',
-                  }}
-                >
+                <div style={{
+                  marginTop: 12, padding: '10px 14px', borderRadius: 10,
+                  background: 'rgba(0,100,200,0.08)', borderLeft: '3px solid rgba(0,160,255,0.5)',
+                  fontSize: 13, color: 'rgba(180,210,240,0.85)',
+                }}>
                   {exportMsg}
-                </p>
+                </div>
               )}
-            </Card>
+            </SettingsCard>
 
-            {/* Danger zone */}
-            <div className="card p-5 border-red-200 dark:border-red-900">
-              <h2 className="text-sm font-semibold text-red-600 dark:text-red-400 mb-3">
-                Danger Zone
-              </h2>
-              <p className="text-sm text-[rgb(var(--text-muted))] mb-4">
-                Signing out will clear your local session. Your data is safely stored.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="danger" onClick={handleLogout}>
-                  <LogOut size={15} />
-                  Sign Out
-                </Button>
-                <Button variant="ghost" disabled>
-                  Delete Account
-                  <Badge variant="default" className="ml-1">Coming soon</Badge>
-                </Button>
+            {/* ── Danger Zone ── */}
+            <div style={{
+              ...panel,
+              borderColor: 'rgba(220,38,38,0.25)',
+              boxShadow: '0 0 0 1px rgba(220,38,38,0.05)',
+            }}>
+              <div style={{
+                padding: '14px 20px 12px', borderBottom: '1px solid rgba(220,38,38,0.12)',
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(252,165,165,0.9)' }}>Danger Zone</span>
+              </div>
+              <div style={{ padding: '16px 20px 20px' }}>
+                <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.75)', marginBottom: 16 }}>
+                  Signing out will clear your local session. Your data is safely stored.
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  <Button variant="danger" onClick={handleLogout}>
+                    <LogOut size={14} /> Sign Out
+                  </Button>
+                  <Button variant="ghost" disabled>
+                    Delete Account
+                    <Badge variant="default" className="ml-1">Coming soon</Badge>
+                  </Button>
+                </div>
               </div>
             </div>
 

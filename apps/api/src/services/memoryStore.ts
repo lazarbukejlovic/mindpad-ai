@@ -26,6 +26,7 @@ interface StoredTask {
   description?: string;
   completed: boolean;
   priority: 'low' | 'medium' | 'high';
+  completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +37,8 @@ interface StoredFocusSession {
   taskId?: string;
   duration: number; // in minutes
   completed: boolean;
+  startedAt: Date;
+  completedAt?: Date;
   createdAt: Date;
 }
 
@@ -147,7 +150,7 @@ class MemoryStore {
       day.setDate(now.getDate() - i);
       const dayStr = day.toISOString().slice(0, 10);
       const hasActivity = userTasks.some(
-        (t) => t.completed && t.updatedAt.toISOString().slice(0, 10) === dayStr
+        (t) => t.completed && (t.completedAt || t.updatedAt).toISOString().slice(0, 10) === dayStr
       );
       if (hasActivity) weeklyStreak++;
       else if (i > 0) break;

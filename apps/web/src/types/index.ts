@@ -17,6 +17,7 @@ export interface Task {
   description?: string;
   priority: 'low' | 'medium' | 'high';
   completed: boolean;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +27,8 @@ export interface FocusSession {
   taskId?: string;
   duration: number;
   completed: boolean;
+  startedAt?: string;
+  completedAt?: string;
   createdAt: string;
 }
 

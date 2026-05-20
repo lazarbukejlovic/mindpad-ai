@@ -269,6 +269,44 @@ export class ApiClient {
     });
   }
 
+  static createTasksBulk(tasks: Array<{
+    title: string;
+    priority?: 'low' | 'medium' | 'high';
+    description?: string;
+    estimatedMinutes?: number;
+    category?: string;
+  }>) {
+    return this.request<{ tasks: Array<{
+      id: string;
+      title: string;
+      description?: string;
+      priority: 'low' | 'medium' | 'high';
+      completed: boolean;
+      completedAt?: string;
+      createdAt: string;
+      updatedAt: string;
+    }> }>('/tasks/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ tasks }),
+    }).catch(async () => {
+      // Fallback: create individually via localStorage path
+      if (typeof window === 'undefined') throw new Error('No fallback available');
+      const key = 'md:tasks';
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const created = tasks.map((t) => ({
+        id: Date.now().toString() + Math.random().toString(36).slice(2),
+        title: t.title,
+        description: t.description,
+        priority: t.priority || 'medium',
+        completed: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
+      localStorage.setItem(key, JSON.stringify([...created, ...existing]));
+      return { tasks: created };
+    });
+  }
+
   static getTasks() {
     return this.request<
       Array<{
@@ -277,6 +315,7 @@ export class ApiClient {
         description?: string;
         priority: 'low' | 'medium' | 'high';
         completed: boolean;
+        completedAt?: string;
         createdAt: string;
         updatedAt: string;
       }>
@@ -327,6 +366,8 @@ export class ApiClient {
       taskId?: string;
       duration: number;
       completed: boolean;
+      startedAt: string;
+      completedAt?: string;
       createdAt: string;
     }>('/focus-sessions', {
       method: 'POST',
@@ -335,7 +376,8 @@ export class ApiClient {
       if (typeof window === 'undefined') throw new Error('No fallback available');
       const key = 'md:focus_sessions';
       const existing = JSON.parse(localStorage.getItem(key) || '[]');
-      const item = { id: Date.now().toString(), taskId: data.taskId, duration: data.duration || 25, completed: false, createdAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const item = { id: Date.now().toString(), taskId: data.taskId, duration: data.duration || 25, completed: false, startedAt: now, createdAt: now };
       existing.unshift(item);
       localStorage.setItem(key, JSON.stringify(existing));
       return item;
@@ -374,6 +416,8 @@ export class ApiClient {
       taskId?: string;
       duration: number;
       completed: boolean;
+      startedAt: string;
+      completedAt?: string;
       createdAt: string;
     }>(`/focus-sessions/${id}/complete`, { method: 'PATCH' }).catch(() => {
       if (typeof window === 'undefined') throw new Error('No fallback available');

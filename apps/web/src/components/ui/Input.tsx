@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, forwardRef } from 'react';
+import { InputHTMLAttributes, forwardRef, CSSProperties } from 'react';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -6,15 +6,37 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   hint?: string;
 }
 
+const inputBase: CSSProperties = {
+  height: 40,
+  width: '100%',
+  padding: '0 12px',
+  borderRadius: 10,
+  fontSize: 13,
+  outline: 'none',
+  transition: 'border-color 0.15s, box-shadow 0.15s',
+  background: 'rgba(3, 6, 14, 0.6)',
+  color: 'rgba(200, 220, 245, 0.92)',
+  fontFamily: 'inherit',
+};
+
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, className = '', id, ...props }, ref) => {
+  ({ label, error, hint, className = '', id, style, ...props }, ref) => {
     const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-');
+
+    const borderStyle: CSSProperties = error
+      ? { border: '1px solid rgba(239, 68, 68, 0.6)' }
+      : { border: '1px solid rgba(0, 160, 255, 0.18)' };
+
     return (
-      <div className="w-full">
+      <div style={{ width: '100%' }}>
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-xs font-semibold uppercase tracking-wide mb-1.5 text-[rgb(var(--text-muted))]"
+            style={{
+              display: 'block', fontSize: 10, fontWeight: 700,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              marginBottom: 6, color: 'rgba(100, 140, 190, 0.75)',
+            }}
           >
             {label}
           </label>
@@ -22,19 +44,31 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={inputId}
-          className={`h-10 w-full px-3 rounded-lg border text-sm outline-none transition-all
-            bg-[rgb(var(--surface))] text-[rgb(var(--text))] placeholder:text-[rgb(var(--text-muted))]
-            ${
-              error
-                ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900'
-                : 'border-[rgb(var(--border))] focus:border-[rgb(var(--brand))] focus:ring-2 focus:ring-[rgb(var(--brand)/0.2)]'
-            } ${className}`}
+          className={className}
+          style={{ ...inputBase, ...borderStyle, ...style }}
+          onFocus={e => {
+            if (error) {
+              e.target.style.borderColor = 'rgba(239, 68, 68, 0.8)';
+              e.target.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.12)';
+            } else {
+              e.target.style.borderColor = 'rgba(0, 160, 255, 0.45)';
+              e.target.style.boxShadow = '0 0 0 3px rgba(0, 120, 255, 0.1)';
+            }
+          }}
+          onBlur={e => {
+            e.target.style.boxShadow = 'none';
+            e.target.style.borderColor = error
+              ? 'rgba(239, 68, 68, 0.6)'
+              : 'rgba(0, 160, 255, 0.18)';
+          }}
           {...props}
         />
         {hint && !error && (
-          <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">{hint}</p>
+          <p style={{ marginTop: 4, fontSize: 11, color: 'rgba(80, 110, 160, 0.7)' }}>{hint}</p>
         )}
-        {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+        {error && (
+          <p style={{ marginTop: 4, fontSize: 11, color: 'rgba(239, 68, 68, 0.85)' }}>{error}</p>
+        )}
       </div>
     );
   }

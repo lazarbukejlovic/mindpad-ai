@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes, ReactNode } from 'react';
+import { ButtonHTMLAttributes, ReactNode, CSSProperties } from 'react';
 import { Loader2 } from 'lucide-react';
 
 type ButtonVariant = 'primary' | 'ghost' | 'danger';
@@ -11,22 +11,44 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
 }
 
-const base =
-  'inline-flex items-center justify-center gap-2 font-semibold rounded-lg transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed';
-
-const variants: Record<ButtonVariant, string> = {
-  primary:
-    'bg-[rgb(var(--brand))] text-white hover:opacity-90 hover:shadow-[0_4px_14px_rgb(var(--brand)/0.35)]',
-  ghost:
-    'border border-[rgb(var(--border))] text-[rgb(var(--text-muted))] hover:bg-[rgb(var(--surface-2))] hover:text-[rgb(var(--text))]',
-  danger:
-    'bg-red-600 text-white hover:bg-red-700',
+const baseStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  fontWeight: 600,
+  borderRadius: 10,
+  transition: 'all 0.15s ease',
+  cursor: 'pointer',
+  border: 'none',
+  outline: 'none',
+  fontFamily: 'inherit',
 };
 
-const sizes: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5 text-xs h-8',
-  md: 'px-4 py-2.5 text-sm h-10',
-  lg: 'px-6 py-3 text-base h-12',
+const variantStyles: Record<ButtonVariant, CSSProperties> = {
+  primary: {
+    background: 'linear-gradient(135deg, #0080d8, #0055a8)',
+    color: '#fff',
+    boxShadow: '0 2px 16px rgba(0, 120, 255, 0.35)',
+    border: '1px solid rgba(0, 160, 255, 0.3)',
+  },
+  ghost: {
+    background: 'rgba(0, 80, 160, 0.08)',
+    color: 'rgba(140, 180, 230, 0.9)',
+    border: '1px solid rgba(0, 160, 255, 0.18)',
+  },
+  danger: {
+    background: 'rgba(180, 30, 30, 0.75)',
+    color: '#fff',
+    border: '1px solid rgba(220, 38, 38, 0.4)',
+    boxShadow: '0 2px 12px rgba(220, 38, 38, 0.2)',
+  },
+};
+
+const sizeStyles: Record<ButtonSize, CSSProperties> = {
+  sm: { padding: '6px 12px', fontSize: 12, height: 32 },
+  md: { padding: '10px 16px', fontSize: 13, height: 40 },
+  lg: { padding: '12px 24px', fontSize: 15, height: 48 },
 };
 
 export default function Button({
@@ -35,16 +57,46 @@ export default function Button({
   loading = false,
   children,
   disabled,
+  style,
   className = '',
   ...props
 }: ButtonProps) {
+  const isDisabled = disabled || loading;
+
   return (
     <button
-      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
-      disabled={disabled || loading}
+      className={className}
+      style={{
+        ...baseStyle,
+        ...variantStyles[variant],
+        ...sizeStyles[size],
+        opacity: isDisabled ? 0.45 : 1,
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        ...style,
+      }}
+      disabled={isDisabled}
+      onMouseEnter={e => {
+        if (isDisabled) return;
+        const el = e.currentTarget;
+        if (variant === 'primary') {
+          el.style.opacity = '0.9';
+          el.style.boxShadow = '0 4px 24px rgba(0, 120, 255, 0.5)';
+        } else if (variant === 'ghost') {
+          el.style.background = 'rgba(0, 100, 200, 0.14)';
+          el.style.color = 'rgba(180, 215, 255, 1)';
+          el.style.borderColor = 'rgba(0, 160, 255, 0.3)';
+        } else if (variant === 'danger') {
+          el.style.background = 'rgba(200, 40, 40, 0.85)';
+        }
+      }}
+      onMouseLeave={e => {
+        if (isDisabled) return;
+        const el = e.currentTarget;
+        Object.assign(el.style, variantStyles[variant], sizeStyles[size]);
+      }}
       {...props}
     >
-      {loading && <Loader2 size={14} className="animate-spin" />}
+      {loading && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
       {children}
     </button>
   );
