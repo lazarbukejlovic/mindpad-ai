@@ -1,15 +1,34 @@
 import { Router, Request, Response } from 'express';
-import { register, login, getMe } from '../controllers/authController';
+import { register, login, getMe, AuthError } from '../controllers/authController';
 import { getGoogleAuthUrl, handleGoogleCallback } from '../controllers/googleAuthController';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
 import { config } from '../config/env';
 
 const router = Router();
 
-router.post('/register', async (req: AuthRequest, res: Response) => {
-  const { email, password } = req.body;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-  if (!email || !password) {
+function handleAuthError(err: unknown, res: Response, fallbackMsg: string) {
+  if (err instanceof AuthError) {
+    res.status(err.httpStatus).json({ error: err.message, code: err.code });
+    return;
+  }
+  // Unexpected error — treat as service unavailable (connection failure, etc.)
+  console.error(`[Auth] ${fallbackMsg}:`, err instanceof Error ? err.message : err);
+  res.status(503).json({
+    error: 'Service temporarily unavailable. Please try again in a moment.',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// POST /auth/register
+// ---------------------------------------------------------------------------
+router.post('/register', async (req: AuthRequest, res: Response) => {
+  const { email, password } = req.body as { email?: string; password?: string };
+
+  if (!email?.trim() || !password) {
     res.status(400).json({ error: 'Email and password are required' });
     return;
   }
@@ -17,22 +36,21 @@ router.post('/register', async (req: AuthRequest, res: Response) => {
   try {
     const result = await register(email, password);
     res.status(201).json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Registration failed';
-    if (message === 'User already exists') {
-      res.status(409).json({ error: message });
-    } else if (message.includes('temporarily unavailable')) {
-      res.status(503).json({ error: message });
-    } else {
-      res.status(400).json({ error: message });
+  } catch (err: unknown) {
+    if (!(err instanceof AuthError)) {
+      console.error('[Auth] Register failed:', err instanceof Error ? err.message : err);
     }
+    handleAuthError(err, res, 'Register unexpected error');
   }
 });
 
+// ---------------------------------------------------------------------------
+// POST /auth/login
+// ---------------------------------------------------------------------------
 router.post('/login', async (req: AuthRequest, res: Response) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body as { email?: string; password?: string };
 
-  if (!email || !password) {
+  if (!email?.trim() || !password) {
     res.status(400).json({ error: 'Email and password are required' });
     return;
   }
@@ -40,35 +58,38 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
   try {
     const result = await login(email, password);
     res.status(200).json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Login failed';
-    if (message.includes('temporarily unavailable')) {
-      res.status(503).json({ error: message });
-    } else {
-      res.status(401).json({ error: message });
+  } catch (err: unknown) {
+    if (!(err instanceof AuthError)) {
+      console.error('[Auth] Login failed:', err instanceof Error ? err.message : err);
     }
+    handleAuthError(err, res, 'Login unexpected error');
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /auth/me
+// ---------------------------------------------------------------------------
 router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
+  if (!req.userId) {
+    res.status(401).json({ error: 'Not authenticated', code: 'NO_TOKEN' });
+    return;
+  }
+
   try {
-    if (!req.userId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
     const user = await getMe(req.userId);
     res.status(200).json(user);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to get user';
-    res.status(400).json({ error: message });
+  } catch (err: unknown) {
+    handleAuthError(err, res, 'getMe unexpected error');
   }
 });
 
+// ---------------------------------------------------------------------------
 // Google OAuth — initiate
+// ---------------------------------------------------------------------------
 router.get('/google', (_req: Request, res: Response) => {
   try {
     if (!config.googleClientId || !config.googleClientSecret) {
-      console.error('[Google OAuth] initiate failed: client credentials not configured');
+      console.error('[Google OAuth] initiate failed: credentials not configured');
       res.redirect(`${config.clientUrl}/login?error=google_not_configured`);
       return;
     }
@@ -80,7 +101,9 @@ router.get('/google', (_req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
 // Google OAuth — callback
+// ---------------------------------------------------------------------------
 router.get('/google/callback', async (req: Request, res: Response) => {
   const { code, state, error } = req.query as Record<string, string>;
 

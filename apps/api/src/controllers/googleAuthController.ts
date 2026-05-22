@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/env';
 import { generateToken } from '../utils/token';
 import { User } from '../models/User';
-import { isMongoConnected } from '../config/database';
+import { ensureConnected } from '../config/database';
 
 // ---------------------------------------------------------------------------
 // Serverless-safe state: signed JWT instead of an in-memory Map.
@@ -140,9 +140,11 @@ export async function handleGoogleCallback(
 
   console.log('[Google OAuth] userinfo fetched, email domain:', profile.email.split('@')[1]);
 
-  // 4. Require database
-  if (!isMongoConnected()) {
-    console.error('[Google OAuth] database not connected');
+  // 4. Require database — await real connection (serverless-safe)
+  try {
+    await ensureConnected();
+  } catch (err) {
+    console.error('[Google OAuth] database connection failed:', err instanceof Error ? err.message : err);
     throw new Error('Database unavailable — cannot complete Google login');
   }
 

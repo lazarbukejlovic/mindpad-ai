@@ -28,8 +28,14 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      if (msg === 'Invalid credentials' || msg.toLowerCase().includes('credentials')) {
+      if (
+        msg === 'Invalid email or password.' ||
+        msg === 'Invalid credentials' ||
+        msg.toLowerCase().includes('credentials')
+      ) {
         setError('Invalid email or password.');
+      } else if (msg.includes('Google sign-in') || msg.includes('GOOGLE_ACCOUNT')) {
+        setError(msg); // show the helpful backend message directly
       } else if (msg.includes('temporarily unavailable')) {
         setError('Service temporarily unavailable. Please try again in a moment.');
       } else {

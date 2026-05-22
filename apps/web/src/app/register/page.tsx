@@ -31,7 +31,7 @@ export default function RegisterPage() {
       router.push('/dashboard');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      if (msg === 'User already exists') {
+      if (msg.includes('already exists') || msg === 'User already exists') {
         setError('An account with this email already exists. Please sign in.');
       } else if (msg.includes('temporarily unavailable')) {
         setError('Service temporarily unavailable. Please try again in a moment.');
