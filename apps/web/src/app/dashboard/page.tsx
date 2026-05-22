@@ -101,6 +101,10 @@ export default function DashboardPage() {
       if (googleToken) {
         saveToken(googleToken);
         try { window.history.replaceState(null, '', '/dashboard'); } catch {}
+        // Eagerly cache the backend user so md:me is never stale
+        ApiClient.getMe().then(me => {
+          try { localStorage.setItem('md:me', JSON.stringify(me)); } catch {}
+        }).catch(() => {});
       }
     }
 

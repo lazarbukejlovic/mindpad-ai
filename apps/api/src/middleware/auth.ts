@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { verifyToken } from '../utils/token';
 
 export interface AuthRequest extends Request {
@@ -22,6 +23,14 @@ export function authMiddleware(
   const payload = verifyToken(token);
   if (!payload) {
     res.status(401).json({ error: 'Invalid or expired token' });
+    return;
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(payload.userId)) {
+    res.status(401).json({
+      error: 'Invalid session. Please sign in again.',
+      code: 'INVALID_TOKEN',
+    });
     return;
   }
 

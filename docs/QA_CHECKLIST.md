@@ -123,6 +123,15 @@ Run through this checklist before every production release. Each item must pass 
 
 ---
 
+## Session / token health
+
+- [ ] Logging in after sign-out with the same email/password works reliably
+- [ ] Old sessions (dev-era UUID tokens in localStorage) are auto-cleared on first API call — user is redirected to /login, NOT shown a CastError
+- [ ] After Google OAuth, visiting `/dashboard` shows the correct user email/name (not empty)
+- [ ] `/api/auth/me` requires a valid JWT — returns 401 for missing/invalid/expired tokens
+- [ ] `/api/auth/me` returns `id`, `_id`, `email`, `name`, `avatarUrl`, `authProvider`, `plan`, `subscriptionStatus`
+- [ ] No route throws `Cast to ObjectId failed` — UUID-bearing tokens are rejected with `INVALID_TOKEN` before reaching any controller
+
 ## Build verification (run before every release)
 
 ```bash

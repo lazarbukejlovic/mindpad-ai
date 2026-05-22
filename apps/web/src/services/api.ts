@@ -46,6 +46,16 @@ export class ApiClient {
         const error = await response.json().catch(() => ({
           error: `HTTP ${response.status}`,
         }));
+
+        if (response.status === 401) {
+          const isAuthEndpoint = endpoint === '/auth/login' || endpoint === '/auth/register';
+          if (!isAuthEndpoint && typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('md:me');
+            window.location.href = '/login';
+          }
+        }
+
         throw new Error(error.error || 'API request failed');
       }
 
@@ -64,7 +74,10 @@ export class ApiClient {
 
   // Auth
   static register(email: string, password: string) {
-    return this.request<{ token: string; user: { email: string } }>(
+    return this.request<{ token: string; user: {
+      id: string; _id: string; email: string; name: string | null;
+      avatarUrl: string | null; authProvider: string; plan: string; subscriptionStatus: string | null;
+    } }>(
       '/auth/register',
       {
         method: 'POST',
@@ -74,7 +87,10 @@ export class ApiClient {
   }
 
   static login(email: string, password: string) {
-    return this.request<{ token: string; user: { email: string } }>(
+    return this.request<{ token: string; user: {
+      id: string; _id: string; email: string; name: string | null;
+      avatarUrl: string | null; authProvider: string; plan: string; subscriptionStatus: string | null;
+    } }>(
       '/auth/login',
       {
         method: 'POST',
@@ -84,10 +100,13 @@ export class ApiClient {
   }
 
   static getMe() {
-    return this.request<{ email: string; name?: string; avatarUrl?: string; authProvider?: string }>('/auth/me').catch(() => {
-      if (typeof window === 'undefined') return { email: '' } as any;
+    return this.request<{
+      id: string; _id: string; email: string; name?: string | null;
+      avatarUrl?: string | null; authProvider?: string; plan?: string; subscriptionStatus?: string | null;
+    }>('/auth/me').catch(() => {
+      if (typeof window === 'undefined') return { id: '', _id: '', email: '' } as any;
       const me = JSON.parse(localStorage.getItem('md:me') || 'null');
-      return me || { email: '' };
+      return me || { id: '', _id: '', email: '' };
     });
   }
 

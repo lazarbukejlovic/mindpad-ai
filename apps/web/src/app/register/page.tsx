@@ -3,6 +3,8 @@
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+
+const GOOGLE_AUTH_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/auth/google`;
 import { Brain, AlertCircle, ArrowRight } from 'lucide-react';
 import { ApiClient } from '@/services/api';
 import { saveToken } from '@/lib/auth';
@@ -25,7 +27,7 @@ export default function RegisterPage() {
     try {
       const result = await ApiClient.register(email, password);
       saveToken(result.token);
-      try { localStorage.setItem('md:me', JSON.stringify({ email: result.user?.email || email })); } catch {}
+      try { localStorage.setItem('md:me', JSON.stringify(result.user)); } catch {}
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -172,7 +174,7 @@ export default function RegisterPage() {
 
             {/* Google OAuth button */}
             <a
-              href="http://localhost:4000/api/auth/google"
+              href={GOOGLE_AUTH_URL}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
                 width: '100%', height: 48, borderRadius: 13, marginBottom: 20,

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { register, login, getMe } from '../controllers/authController';
 import { getGoogleAuthUrl, handleGoogleCallback } from '../controllers/googleAuthController';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, authMiddleware } from '../middleware/auth';
 import { config } from '../config/env';
 
 const router = Router();
@@ -40,7 +40,7 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/me', async (req: AuthRequest, res: Response) => {
+router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.userId) {
       res.status(401).json({ error: 'Unauthorized' });
