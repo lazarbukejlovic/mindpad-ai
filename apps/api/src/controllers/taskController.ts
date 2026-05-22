@@ -1,8 +1,10 @@
 import { Task } from '../models/Task';
+import { User } from '../models/User';
 import { isMongoConnected } from '../config/database';
 import { memoryStore } from '../services/memoryStore';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
+import { PLAN_CONFIG, PlanError, Plan } from '../config/plans';
 
 const CreateTaskSchema = z.object({
   title: z.string().min(1, 'Title is required').max(300, 'Title too long'),
@@ -52,6 +54,17 @@ export async function createTask(
   const validated = CreateTaskSchema.parse(data);
 
   if (isMongoConnected()) {
+    const user = await User.findById(userId);
+    const plan = (user?.plan as Plan) || 'free';
+    const { maxActiveTasks } = PLAN_CONFIG[plan];
+    const activeCount = await Task.countDocuments({ userId, completed: false });
+    if (activeCount >= maxActiveTasks) {
+      throw new PlanError(
+        `Active task limit reached (${maxActiveTasks} on ${plan} plan)`,
+        'PLAN_LIMIT_REACHED',
+        plan === 'free' ? 'pro' : 'team'
+      );
+    }
     const task = new Task({ userId, ...validated, completed: false });
     await task.save();
     return serializeTask(task);

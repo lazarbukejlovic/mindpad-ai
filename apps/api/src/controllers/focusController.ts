@@ -111,10 +111,9 @@ export async function completeFocusSession(userId: string, sessionId: string) {
 
 export async function deleteFocusSession(userId: string, sessionId: string) {
   if (isMongoConnected()) {
-    const { FocusSession: FS } = await import('../models/FocusSession');
-    const session = await FS.findOne({ _id: sessionId, userId });
+    const session = await FocusSession.findOne({ _id: sessionId, userId });
     if (!session) return;
-    await FS.deleteOne({ _id: sessionId, userId });
+    await FocusSession.deleteOne({ _id: sessionId, userId });
   } else {
     const session = memoryStore.getFocusSessionById(sessionId);
     if (!session || session.userId !== userId) return;

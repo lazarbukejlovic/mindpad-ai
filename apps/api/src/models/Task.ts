@@ -6,6 +6,8 @@ export interface ITask extends Document {
   description?: string;
   completed: boolean;
   priority: 'low' | 'medium' | 'high';
+  estimatedMinutes?: number;
+  category?: string;
   completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +33,12 @@ const taskSchema = new Schema<ITask>(
       type: String,
       enum: ['low', 'medium', 'high'],
       default: 'medium',
+    },
+    estimatedMinutes: {
+      type: Number,
+    },
+    category: {
+      type: String,
     },
     completedAt: {
       type: Date,

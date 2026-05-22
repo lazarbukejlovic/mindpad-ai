@@ -2,10 +2,12 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Brain, Sparkles, Save, Trash2, CheckCircle2, AlertCircle, Target, Zap } from 'lucide-react';
+import { Brain, Sparkles, Save, Trash2, CheckCircle2, AlertCircle, Target, Zap, Clock, Tag, Bot, BookMarked } from 'lucide-react';
+import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { getToken } from '@/lib/auth';
 import { OrganizeResult, BrainDump } from '@/types/index';
+import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -35,10 +37,17 @@ export default function BrainDumpPage() {
   const [acceptedTasks, setAcceptedTasks] = useState<Set<number>>(new Set());
   const [addingTasks, setAddingTasks] = useState(false);
   const [addedMsg, setAddedMsg]     = useState('');
+  const [aiMode, setAiMode]         = useState<'ai' | 'offline' | null>(null);
+  const [savingAsPlan, setSavingAsPlan] = useState(false);
+  const [savedAsPlanMsg, setSavedAsPlanMsg] = useState('');
+  const { plan, entitlements, usage, invalidate: invalidateBilling } = useBilling();
+  const atExtractionLimit = !!(entitlements && usage && usage.dailyExtractionsUsed >= entitlements.dailyBrainDumpExtractions);
+  const canSavePlans = entitlements?.canSaveExecutionPlans ?? false;
 
   useEffect(() => {
     if (!getToken()) { setDumpsLoading(false); router.push('/login'); return; }
     loadBrainDumps();
+    ApiClient.getAIStatus().then(s => setAiMode(s.mode)).catch(() => setAiMode('offline'));
   }, [router]);
 
   async function loadBrainDumps() {
@@ -57,8 +66,10 @@ export default function BrainDumpPage() {
     try {
       const organized = await ApiClient.organizeBrainDump(content);
       setResult(organized);
+      setAiMode(organized.mode); // sync header badge to actual result mode
       setAcceptedTasks(new Set(organized.tasks.map((_: string, i: number) => i)));
       setContent('');
+      invalidateBilling(); // refresh extraction count
       await loadBrainDumps();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to organize');
@@ -109,6 +120,25 @@ export default function BrainDumpPage() {
     }
   }
 
+  async function handleSaveAsExecutionPlan() {
+    if (!result || !canSavePlans) return;
+    setSavingAsPlan(true);
+    setSavedAsPlanMsg('');
+    try {
+      await ApiClient.saveExecutionPlan({
+        title: result.summary.slice(0, 80) || 'Brain Dump Plan',
+        summary: result.summary,
+        steps: result.tasks,
+        source: 'brain-dump',
+      });
+      setSavedAsPlanMsg('Saved as execution plan. Find it in Focus.');
+    } catch (err) {
+      setSavedAsPlanMsg(err instanceof Error ? err.message : 'Failed to save plan');
+    } finally {
+      setSavingAsPlan(false);
+    }
+  }
+
   function toggleTask(idx: number) {
     setAcceptedTasks(prev => {
       const next = new Set(prev);
@@ -126,26 +156,46 @@ export default function BrainDumpPage() {
           <div className="max-w-3xl mx-auto px-4 md:px-8 py-8">
 
             {/* ── Header ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: 14, flexShrink: 0,
-                background: 'rgba(0,130,255,0.12)', border: '1px solid rgba(0,160,255,0.25)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 20px rgba(0,120,255,0.15)',
-              }}>
-                <Brain size={22} style={{ color: '#40b8ff' }} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginBottom: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                  background: 'rgba(0,130,255,0.12)', border: '1px solid rgba(0,160,255,0.25)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 20px rgba(0,120,255,0.15)',
+                }}>
+                  <Brain size={22} style={{ color: '#40b8ff' }} />
+                </div>
+                <div>
+                  <h1 style={{
+                    fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em',
+                    background: 'linear-gradient(135deg, #d8eeff 30%, #6098c8 100%)',
+                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                    marginBottom: 3,
+                  }}>Brain Dump</h1>
+                  <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.85)' }}>
+                    Write freely. AI extracts actionable tasks.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 style={{
-                  fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em',
-                  background: 'linear-gradient(135deg, #d8eeff 30%, #6098c8 100%)',
-                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                  marginBottom: 3,
-                }}>Brain Dump</h1>
-                <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.85)' }}>
-                  Write freely. AI extracts actionable tasks.
-                </p>
-              </div>
+              {aiMode !== null && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 12px', borderRadius: 99, flexShrink: 0,
+                  background: aiMode === 'ai' ? 'rgba(0,130,255,0.08)' : 'rgba(60,70,90,0.15)',
+                  border: `1px solid ${aiMode === 'ai' ? 'rgba(0,160,255,0.18)' : 'rgba(80,100,140,0.22)'}`,
+                }}>
+                  {aiMode === 'ai'
+                    ? <Sparkles size={11} style={{ color: '#00c0ff' }} />
+                    : <Bot size={11} style={{ color: 'rgba(120,140,180,0.8)' }} />}
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
+                    color: aiMode === 'ai' ? 'rgba(0,200,255,0.8)' : 'rgba(100,130,180,0.65)',
+                  }}>
+                    {aiMode === 'ai' ? 'MindPad AI' : 'Execution Assistant'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {error && (
@@ -215,12 +265,27 @@ export default function BrainDumpPage() {
                     </span>
                   </div>
 
+                  {/* Extraction usage */}
+                  {entitlements && usage && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 2 }}>
+                      <span style={{ fontSize: 11, color: atExtractionLimit ? 'rgba(252,165,165,0.8)' : 'rgba(70,100,140,0.65)' }}>
+                        Daily extractions: {usage.dailyExtractionsUsed} / {entitlements.dailyBrainDumpExtractions}
+                        {atExtractionLimit && ' — limit reached'}
+                      </span>
+                      {atExtractionLimit && (
+                        <Link href="/pricing" style={{ fontSize: 11, fontWeight: 700, color: '#ffb700', textDecoration: 'none' }}>
+                          <Zap size={10} style={{ display: 'inline', marginRight: 3 }} />Upgrade
+                        </Link>
+                      )}
+                    </div>
+                  )}
+
                   {/* CTA row */}
                   <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                     {/* Primary AI extract button */}
                     <button
                       type="submit"
-                      disabled={loading || !content.trim()}
+                      disabled={loading || !content.trim() || atExtractionLimit}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8,
                         padding: '0 22px', height: 44, borderRadius: 12,
@@ -283,6 +348,29 @@ export default function BrainDumpPage() {
                 </div>
 
                 <div style={{ padding: '20px' }}>
+                  {/* AI mode badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '4px 10px', borderRadius: 99,
+                      background: result.mode === 'ai' ? 'rgba(0,130,255,0.08)' : 'rgba(60,70,90,0.15)',
+                      border: `1px solid ${result.mode === 'ai' ? 'rgba(0,160,255,0.2)' : 'rgba(80,100,140,0.22)'}`,
+                    }}>
+                      <span style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: result.mode === 'ai' ? '#00c0ff' : 'rgba(120,140,180,0.5)',
+                        boxShadow: result.mode === 'ai' ? '0 0 6px rgba(0,200,255,0.8)' : 'none',
+                        flexShrink: 0,
+                      }} />
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+                        color: result.mode === 'ai' ? 'rgba(0,200,255,0.8)' : 'rgba(100,130,180,0.65)',
+                      }}>
+                        {result.mode === 'ai' ? 'MindPad AI' : 'Execution Assistant'}
+                      </span>
+                    </div>
+                  </div>
+
                   {/* Summary */}
                   <div style={{
                     padding: '14px 16px', borderRadius: 10, marginBottom: 16,
@@ -306,11 +394,22 @@ export default function BrainDumpPage() {
                     </div>
                   </div>
 
+                  {/* Reasoning — only show when AI is active and reasoning has meaningful content */}
+                  {result.mode === 'ai' && result.reasoning && (
+                    <div style={{
+                      padding: '10px 14px', borderRadius: 9, marginBottom: 12,
+                      background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(0,160,255,0.08)',
+                      fontSize: 12, color: 'rgba(100,140,190,0.8)', lineHeight: 1.6, fontStyle: 'italic',
+                    }}>
+                      {result.reasoning}
+                    </div>
+                  )}
+
                   {/* Task checkboxes */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                     {result.tasks.map((task, idx) => (
                       <label key={idx} style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
+                        display: 'flex', alignItems: 'flex-start', gap: 12,
                         padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
                         transition: 'all 0.15s',
                         background: acceptedTasks.has(idx) ? 'rgba(0,130,255,0.08)' : 'rgba(0,0,0,0.2)',
@@ -320,22 +419,58 @@ export default function BrainDumpPage() {
                           type="checkbox"
                           checked={acceptedTasks.has(idx)}
                           onChange={() => toggleTask(idx)}
-                          style={{ width: 16, height: 16, accentColor: '#0092f0', cursor: 'pointer' }}
+                          style={{ width: 16, height: 16, accentColor: '#0092f0', cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
                         />
-                        <span style={{ flex: 1, fontSize: 13, color: 'rgba(200,220,240,0.9)', fontWeight: 500 }}>
-                          {task}
-                        </span>
-                        <Badge variant={priorityVariant[result.priorities[idx] as keyof typeof priorityVariant] ?? 'default'}>
-                          {result.priorities[idx] || 'Medium'}
-                        </Badge>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 13, color: 'rgba(200,220,240,0.9)', fontWeight: 500, marginBottom: 5 }}>
+                            {task}
+                          </span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            <Badge variant={priorityVariant[result.priorities[idx] as keyof typeof priorityVariant] ?? 'default'}>
+                              {result.priorities[idx] || 'Medium'}
+                            </Badge>
+                            {result.categories?.[idx] && (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 600,
+                                background: 'rgba(80,140,200,0.1)', border: '1px solid rgba(80,140,200,0.2)',
+                                color: 'rgba(120,180,240,0.8)',
+                              }}>
+                                <Tag size={9} />{result.categories[idx]}
+                              </span>
+                            )}
+                            {result.estimatedMinutes?.[idx] && (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 600,
+                                background: 'rgba(80,100,160,0.1)', border: '1px solid rgba(80,100,160,0.2)',
+                                color: 'rgba(120,150,220,0.8)',
+                              }}>
+                                <Clock size={9} />{result.estimatedMinutes[idx]}m
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </label>
                     ))}
                   </div>
 
+                  {/* Daily plan suggestion */}
+                  {result.dailyPlanSuggestion && (
+                    <div style={{
+                      padding: '12px 14px', borderRadius: 10, marginBottom: 14,
+                      background: 'rgba(0,80,200,0.07)', border: '1px solid rgba(0,160,255,0.15)',
+                      fontSize: 13, color: 'rgba(150,200,255,0.85)', lineHeight: 1.6,
+                    }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#40b8ff', marginBottom: 6 }}>Daily Plan</p>
+                      {result.dailyPlanSuggestion}
+                    </div>
+                  )}
+
                   {addedMsg ? (
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '12px 14px', borderRadius: 10,
+                      padding: '12px 14px', borderRadius: 10, marginBottom: 10,
                       background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)',
                       color: '#6ee7b7', fontSize: 13, fontWeight: 500,
                     }}>
@@ -348,7 +483,7 @@ export default function BrainDumpPage() {
                       disabled={addingTasks || acceptedTasks.size === 0}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        width: '100%', height: 44, borderRadius: 10,
+                        width: '100%', height: 44, borderRadius: 10, marginBottom: 10,
                         border: '1px solid rgba(0,160,255,0.25)',
                         background: acceptedTasks.size === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,100,200,0.12)',
                         color: acceptedTasks.size === 0 ? 'rgba(90,120,160,0.5)' : 'rgba(100,180,255,0.9)',
@@ -359,6 +494,45 @@ export default function BrainDumpPage() {
                       <Zap size={13} />
                       {addingTasks ? 'Adding...' : `Add ${acceptedTasks.size} selected task${acceptedTasks.size !== 1 ? 's' : ''} to Tasks`}
                     </button>
+                  )}
+
+                  {/* Save as Execution Plan */}
+                  {savedAsPlanMsg ? (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10,
+                      background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)',
+                      color: '#a78bfa', fontSize: 12, fontWeight: 500,
+                    }}>
+                      <BookMarked size={13} />{savedAsPlanMsg}
+                    </div>
+                  ) : canSavePlans ? (
+                    <button
+                      onClick={handleSaveAsExecutionPlan}
+                      disabled={savingAsPlan}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                        width: '100%', height: 38, borderRadius: 10,
+                        border: '1px solid rgba(124,58,237,0.25)',
+                        background: 'rgba(124,58,237,0.07)',
+                        color: '#a78bfa', fontSize: 12, fontWeight: 600,
+                        cursor: savingAsPlan ? 'wait' : 'pointer', transition: 'all 0.15s',
+                      }}
+                    >
+                      <BookMarked size={12} />
+                      {savingAsPlan ? 'Saving...' : 'Save as Execution Plan'}
+                    </button>
+                  ) : (
+                    <Link href="/pricing" style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                      width: '100%', height: 38, borderRadius: 10,
+                      border: '1px solid rgba(80,60,160,0.15)',
+                      background: 'rgba(3, 5, 16, 0.5)',
+                      color: 'rgba(130,100,220,0.5)', fontSize: 12, fontWeight: 600,
+                      textDecoration: 'none',
+                    }}>
+                      <BookMarked size={12} />
+                      Save as Execution Plan <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: 'rgba(120,80,200,0.1)', border: '1px solid rgba(150,100,240,0.15)', marginLeft: 4 }}>PRO</span>
+                    </Link>
                   )}
                 </div>
               </div>

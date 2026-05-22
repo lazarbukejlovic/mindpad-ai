@@ -15,7 +15,7 @@ export async function register(email: string, password: string) {
       throw new Error('User already exists');
     }
 
-    const user = new User({ email, passwordHash });
+    const user = new User({ email, passwordHash, authProvider: 'email' });
     await user.save();
 
     const token = generateToken({
@@ -85,7 +85,12 @@ export async function getMe(userId: string) {
     if (!user) {
       throw new Error('User not found');
     }
-    return { email: user.email };
+    return {
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+      authProvider: user.authProvider,
+    };
   } else {
     const user = memoryStore.getUserById(userId);
     if (!user) {

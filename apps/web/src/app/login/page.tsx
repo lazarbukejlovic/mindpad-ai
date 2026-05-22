@@ -170,6 +170,43 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/* Google OAuth button */}
+            <a
+              href="http://localhost:4000/api/auth/google"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                width: '100%', height: 48, borderRadius: 13, marginBottom: 20,
+                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'rgba(255,255,255,0.05)',
+                color: 'rgba(200,220,245,0.9)', fontSize: 14, fontWeight: 600,
+                textDecoration: 'none', cursor: 'pointer', transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.09)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+              }}
+            >
+              {/* Google SVG icon */}
+              <svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M47.532 24.552c0-1.636-.132-3.208-.382-4.728H24v9.02h13.192c-.57 3.064-2.296 5.66-4.888 7.402v6.152h7.912c4.628-4.264 7.316-10.548 7.316-17.846z" fill="#4285F4"/>
+                <path d="M24 48c6.636 0 12.196-2.2 16.264-5.952l-7.912-6.152c-2.196 1.472-5.004 2.34-8.352 2.34-6.428 0-11.876-4.34-13.824-10.172H2.024v6.352C6.076 42.628 14.444 48 24 48z" fill="#34A853"/>
+                <path d="M10.176 28.064A14.4 14.4 0 0 1 9.6 24c0-1.412.24-2.784.576-4.064v-6.352H2.024A23.978 23.978 0 0 0 0 24c0 3.876.924 7.548 2.024 10.416l8.152-6.352z" fill="#FBBC05"/>
+                <path d="M24 9.528c3.624 0 6.872 1.248 9.432 3.68l7.072-7.072C36.192 2.2 30.632 0 24 0 14.444 0 6.076 5.372 2.024 13.584l8.152 6.352C12.124 13.868 17.572 9.528 24 9.528z" fill="#EA4335"/>
+              </svg>
+              Continue with Google
+            </a>
+
+            {/* Divider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <div style={{ flex: 1, height: 1, background: 'rgba(0,160,255,0.1)' }} />
+              <span style={{ fontSize: 11, color: 'rgba(60,90,130,0.7)', letterSpacing: '0.07em' }}>OR</span>
+              <div style={{ flex: 1, height: 1, background: 'rgba(0,160,255,0.1)' }} />
+            </div>
+
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
               <div>
                 <label style={{

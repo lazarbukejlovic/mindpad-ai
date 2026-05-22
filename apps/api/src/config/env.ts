@@ -8,4 +8,11 @@ export const config = {
   mongodbUri: process.env.MONGODB_URI || '',
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-key-change-in-production',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripePriceProMonthly: process.env.STRIPE_PRICE_PRO_MONTHLY || '',
+  stripePriceTeamMonthly: process.env.STRIPE_PRICE_TEAM_MONTHLY || '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/api/auth/google/callback',
 };

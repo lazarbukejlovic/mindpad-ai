@@ -1010,42 +1010,41 @@ export default function LandingPage() {
               </div>
 
               {/* Pro */}
-              <div className="rounded-2xl border border-white/10 bg-[#080808] p-8 transition-all duration-200 hover:border-[#7c3aed]/30">
+              <div className="rounded-2xl border border-[#7c3aed]/30 bg-[#080808] p-8 transition-all duration-200 hover:border-[#7c3aed]/60">
                 <div className="mb-2 flex items-end gap-1.5">
                   <span className="text-4xl font-black text-white">$9</span>
                   <span className="mb-1.5 text-sm text-[#475569]">/ month</span>
                 </div>
-                <p className="mb-1 text-sm font-bold text-[#7c3aed]">Pro</p>
-                <p className="mb-6 text-xs text-[#374151]">Coming soon · Join preview</p>
+                <p className="mb-6 text-sm font-bold text-[#7c3aed]">Pro</p>
                 <div className="mb-8 space-y-3">
                   {['Advanced analytics', 'Daily planning', 'Full focus history', 'Priority insights', 'Export & integrations'].map((f) => (
-                    <div key={f} className="flex items-center gap-2.5 text-sm text-[#64748b]">
-                      <div className="h-3.5 w-3.5 flex-shrink-0 rounded-full border border-[#374151]" /> {f}
+                    <div key={f} className="flex items-center gap-2.5 text-sm text-[#e2e8f0]">
+                      <CheckCircle2 size={14} color="#7c3aed" /> {f}
                     </div>
                   ))}
                 </div>
-                <button disabled className="w-full cursor-not-allowed rounded-xl border border-white/10 py-3 text-center text-sm font-semibold text-[#374151]">
-                  Coming soon
-                </button>
+                <Link href="/pricing" className="block w-full rounded-xl bg-[#7c3aed] py-3 text-center text-sm font-bold text-white transition hover:bg-[#6d28d9] hover:shadow-[0_0_20px_rgba(124,58,237,0.35)]">
+                  Upgrade to Pro
+                </Link>
               </div>
 
               {/* Team */}
-              <div className="rounded-2xl border border-white/10 bg-[#080808] p-8 transition-all duration-200 hover:border-[#38bdf8]/20">
-                <div className="mb-2">
-                  <span className="text-4xl font-black text-[#374151]">Team</span>
+              <div className="rounded-2xl border border-[#38bdf8]/20 bg-[#080808] p-8 transition-all duration-200 hover:border-[#38bdf8]/50">
+                <div className="mb-2 flex items-end gap-1.5">
+                  <span className="text-4xl font-black text-white">$29</span>
+                  <span className="mb-1.5 text-sm text-[#475569]">/ month</span>
                 </div>
-                <p className="mb-1 text-sm font-bold text-[#38bdf8]">Teams</p>
-                <p className="mb-6 text-xs text-[#374151]">Coming soon</p>
+                <p className="mb-6 text-sm font-bold text-[#38bdf8]">Team</p>
                 <div className="mb-8 space-y-3">
                   {['Shared workspaces', 'Team productivity insights', 'Collaboration workflows', 'Admin controls', 'Priority support'].map((f) => (
-                    <div key={f} className="flex items-center gap-2.5 text-sm text-[#374151]">
-                      <div className="h-3.5 w-3.5 flex-shrink-0 rounded-full border border-[#1e293b]" /> {f}
+                    <div key={f} className="flex items-center gap-2.5 text-sm text-[#e2e8f0]">
+                      <CheckCircle2 size={14} color="#38bdf8" /> {f}
                     </div>
                   ))}
                 </div>
-                <button disabled className="w-full cursor-not-allowed rounded-xl border border-white/5 py-3 text-center text-sm font-semibold text-[#1e293b]">
-                  Coming soon
-                </button>
+                <Link href="/pricing" className="block w-full rounded-xl border border-[#38bdf8]/40 bg-[#38bdf8]/10 py-3 text-center text-sm font-bold text-[#38bdf8] transition hover:bg-[#38bdf8]/20 hover:shadow-[0_0_20px_rgba(56,189,248,0.2)]">
+                  Upgrade to Team
+                </Link>
               </div>
             </div>
           </div>

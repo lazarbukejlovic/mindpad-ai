@@ -2,10 +2,13 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Timer, Play, Pause, RotateCcw, CheckCircle2, Flame, AlertCircle } from 'lucide-react';
+import { Timer, Play, Pause, RotateCcw, CheckCircle2, Flame, AlertCircle, Sparkles, Zap, Target, BookMarked, Plus, Trash2, Lock } from 'lucide-react';
+import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { getToken } from '@/lib/auth';
-import { FocusSession, Task } from '@/types/index';
+import { FocusSession, Task, FocusRecommendation, SavedExecutionPlan } from '@/types/index';
+import { buildWorkspaceContext } from '@/lib/aiContext';
+import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -76,6 +79,9 @@ const panel: React.CSSProperties = {
 
 export default function FocusPage() {
   const router = useRouter();
+  const { entitlements } = useBilling();
+  const canSavePlans = entitlements?.canSaveExecutionPlans ?? false;
+
   const [tasks, setTasks]               = useState<Task[]>([]);
   const [sessions, setSessions]         = useState<FocusSession[]>([]);
   const [selectedTask, setSelectedTask] = useState<string | undefined>();
@@ -86,13 +92,26 @@ export default function FocusPage() {
   const [dataLoading, setDataLoading]   = useState(true);
   const [starting, setStarting]         = useState(false);
   const [sessionError, setSessionError] = useState('');
+  const [recommendation, setRecommendation] = useState<FocusRecommendation | null>(null);
+  const [recLoading, setRecLoading]     = useState(false);
+
+  // Saved Execution Plans
+  const [savedPlans, setSavedPlans]     = useState<SavedExecutionPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [newPlanTitle, setNewPlanTitle] = useState('');
+  const [newPlanSteps, setNewPlanSteps] = useState('');
+  const [savingPlan, setSavingPlan]     = useState(false);
+  const [planMsg, setPlanMsg]           = useState('');
+  const [showPlanForm, setShowPlanForm] = useState(false);
+
   const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!getToken()) { setDataLoading(false); router.push('/login'); return; }
     loadData();
-  }, [router]);
+    if (canSavePlans) loadSavedPlans();
+  }, [router, canSavePlans]);
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
@@ -125,10 +144,59 @@ export default function FocusPage() {
   async function loadData() {
     try {
       const [tasksData, sessionsData] = await Promise.all([ApiClient.getTasks(), ApiClient.getFocusSessions()]);
-      setTasks((tasksData as Task[]).filter(t => !t.completed));
+      const activeTasks = (tasksData as Task[]).filter(t => !t.completed);
+      setTasks(activeTasks);
       setSessions(sessionsData as FocusSession[]);
+      // Auto-load recommendation after data loads
+      if (activeTasks.length > 0) {
+        fetchRecommendation(activeTasks, sessionsData as FocusSession[]);
+      }
     } catch { /* silent */ }
     finally { setDataLoading(false); }
+  }
+
+  async function loadSavedPlans() {
+    setPlansLoading(true);
+    try {
+      const data = await ApiClient.getExecutionPlans();
+      setSavedPlans(data);
+    } catch { /* silent */ }
+    finally { setPlansLoading(false); }
+  }
+
+  async function handleSavePlan() {
+    if (!newPlanTitle.trim()) return;
+    setSavingPlan(true);
+    setPlanMsg('');
+    try {
+      const steps = newPlanSteps.split('\n').map(s => s.trim()).filter(Boolean);
+      const plan = await ApiClient.saveExecutionPlan({ title: newPlanTitle.trim(), steps, source: 'manual' });
+      setSavedPlans(prev => [plan, ...prev]);
+      setNewPlanTitle('');
+      setNewPlanSteps('');
+      setShowPlanForm(false);
+      setPlanMsg('Plan saved.');
+    } catch (err) {
+      setPlanMsg(err instanceof Error ? err.message : 'Failed to save plan');
+    } finally { setSavingPlan(false); }
+  }
+
+  async function handleDeletePlan(id: string) {
+    try {
+      await ApiClient.deleteExecutionPlan(id);
+      setSavedPlans(prev => prev.filter(p => p.id !== id));
+    } catch { /* silent */ }
+  }
+
+  async function fetchRecommendation(activeTasks: Task[], allSessions?: FocusSession[]) {
+    setRecLoading(true);
+    try {
+      const sessionsToUse = allSessions ?? sessions;
+      const ctx = buildWorkspaceContext({ tasks: [...activeTasks, ...activeTasks.map(t => ({ ...t, completed: false }))], sessions: sessionsToUse });
+      const rec = await ApiClient.getFocusRecommendation(ctx);
+      if (rec) setRecommendation(rec);
+    } catch { /* silent */ }
+    finally { setRecLoading(false); }
   }
 
   async function handleStart() {
@@ -340,6 +408,107 @@ export default function FocusPage() {
 
               {/* ── Right column ── */}
               <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: 20 }} className="md:col-span-2">
+
+                {/* AI Focus Recommendation */}
+                {phase === 'setup' && (
+                  <div style={panel}>
+                    <div style={{
+                      padding: '12px 16px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Sparkles size={13} style={{ color: '#40b8ff' }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>AI Recommendation</span>
+                      </div>
+                      {!recLoading && tasks.length > 0 && (
+                        <button onClick={() => fetchRecommendation(tasks)} style={{
+                          fontSize: 10, color: 'rgba(80,110,160,0.6)', background: 'none', border: 'none', cursor: 'pointer',
+                        }}>
+                          Refresh
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ padding: '14px 16px 16px' }}>
+                      {recLoading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0' }}><Spinner /></div>
+                      ) : !recommendation ? (
+                        <p style={{ fontSize: 12, color: 'rgba(80,110,160,0.7)', textAlign: 'center', padding: '8px 0' }}>
+                          Add tasks to get AI focus guidance.
+                        </p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {/* Suggested task */}
+                          {recommendation.suggestedTask && (
+                            <div style={{
+                              padding: '10px 12px', borderRadius: 9,
+                              background: 'rgba(255,185,0,0.06)', border: '1px solid rgba(255,185,0,0.2)',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                                <Target size={12} style={{ color: '#ffb700', flexShrink: 0 }} />
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#ffb700', letterSpacing: '0.07em', textTransform: 'uppercase' }}>Focus On</span>
+                              </div>
+                              <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(200,220,245,0.92)', marginBottom: 4, lineHeight: 1.4 }}>
+                                {recommendation.suggestedTask}
+                              </p>
+                              <p style={{ fontSize: 11, color: 'rgba(90,120,160,0.8)', lineHeight: 1.5 }}>
+                                {recommendation.why}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Session length + first step */}
+                          <div style={{
+                            padding: '10px 12px', borderRadius: 9,
+                            background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(0,160,255,0.1)',
+                            display: 'flex', flexDirection: 'column', gap: 6,
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Timer size={11} style={{ color: '#40b8ff' }} />
+                              <span style={{ fontSize: 11, color: 'rgba(100,160,220,0.85)' }}>
+                                Suggested: <strong>{recommendation.sessionLength} min</strong>
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                              <Zap size={11} style={{ color: '#40b8ff', flexShrink: 0, marginTop: 1 }} />
+                              <span style={{ fontSize: 11, color: 'rgba(140,180,230,0.8)', lineHeight: 1.5 }}>
+                                {recommendation.firstStep}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Warning */}
+                          {recommendation.warning && (
+                            <div style={{
+                              padding: '8px 12px', borderRadius: 9, fontSize: 11,
+                              background: 'rgba(220,150,0,0.07)', border: '1px solid rgba(220,150,0,0.2)',
+                              color: 'rgba(255,185,100,0.85)', lineHeight: 1.5,
+                            }}>
+                              ⚠ {recommendation.warning}
+                            </div>
+                          )}
+
+                          {/* Quick select the recommended task */}
+                          {recommendation.suggestedTask && tasks.some(t => t.title === recommendation.suggestedTask) && (
+                            <button
+                              onClick={() => {
+                                const t = tasks.find(t => t.title === recommendation.suggestedTask);
+                                if (t) setSelectedTask(t.id);
+                              }}
+                              style={{
+                                padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                                background: 'rgba(0,100,200,0.1)', border: '1px solid rgba(0,160,255,0.2)',
+                                color: 'rgba(100,180,255,0.9)', cursor: 'pointer', transition: 'all 0.15s',
+                              }}
+                            >
+                              Select this task →
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Task selector */}
                 {phase === 'setup' && (
                   <div style={panel}>
@@ -429,6 +598,171 @@ export default function FocusPage() {
                 )}
               </div>
             </div>
+
+            {/* ── Saved Execution Plans ── */}
+            <div style={{ marginTop: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+                  background: 'rgba(0,130,255,0.1)', border: '1px solid rgba(0,160,255,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <BookMarked size={16} style={{ color: '#40b8ff' }} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: 15, fontWeight: 700, color: 'rgba(180,210,240,0.9)' }}>
+                    Saved Execution Plans
+                    {!canSavePlans && (
+                      <span style={{
+                        marginLeft: 8, fontSize: 10, padding: '2px 7px', borderRadius: 99,
+                        background: 'rgba(120,80,200,0.1)', border: '1px solid rgba(150,100,240,0.2)',
+                        color: '#a78bfa', fontWeight: 700,
+                      }}>PRO</span>
+                    )}
+                  </h2>
+                  <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.7)' }}>Step-by-step plans you can reference during sessions</p>
+                </div>
+              </div>
+
+              {!canSavePlans ? (
+                <div style={{
+                  padding: '20px 24px', borderRadius: '1rem',
+                  background: 'rgba(3, 5, 16, 0.6)',
+                  border: '1px solid rgba(80,60,160,0.2)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <Lock size={14} style={{ color: 'rgba(130,100,220,0.6)' }} />
+                    <span style={{ fontSize: 13, color: 'rgba(130,100,220,0.8)' }}>Upgrade to Pro to save execution plans</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'rgba(80,110,160,0.65)', marginBottom: 14 }}>
+                    Save structured step-by-step plans from brain dumps, quick ideas, or focus sessions — and reference them anytime.
+                  </p>
+                  <Link href="/pricing" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    background: 'rgba(120,80,200,0.1)', border: '1px solid rgba(150,100,240,0.2)',
+                    color: '#a78bfa', textDecoration: 'none',
+                  }}>
+                    <Sparkles size={11} />Upgrade to Pro
+                  </Link>
+                </div>
+              ) : (
+                <div style={{
+                  background: 'rgba(5, 10, 22, 0.78)', backdropFilter: 'blur(24px)',
+                  WebkitBackdropFilter: 'blur(24px)', border: '1px solid rgba(0,160,255,0.12)',
+                  borderRadius: '1rem',
+                }}>
+                  <div style={{
+                    padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>
+                      {savedPlans.length} saved plan{savedPlans.length !== 1 ? 's' : ''}
+                    </span>
+                    <button
+                      onClick={() => setShowPlanForm(v => !v)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600,
+                        padding: '5px 10px', borderRadius: 7, cursor: 'pointer',
+                        background: showPlanForm ? 'rgba(220,38,38,0.08)' : 'rgba(0,100,200,0.1)',
+                        border: `1px solid ${showPlanForm ? 'rgba(220,38,38,0.2)' : 'rgba(0,160,255,0.2)'}`,
+                        color: showPlanForm ? '#fc8181' : '#40b8ff',
+                      }}
+                    >
+                      <Plus size={12} style={{ transform: showPlanForm ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s' }} />
+                      {showPlanForm ? 'Cancel' : 'New Plan'}
+                    </button>
+                  </div>
+                  <div style={{ padding: '16px 20px 20px' }}>
+                    {planMsg && (
+                      <p style={{ fontSize: 12, color: planMsg.includes('aved') ? '#22c55e' : '#ef4444', marginBottom: 12 }}>{planMsg}</p>
+                    )}
+
+                    {showPlanForm && (
+                      <div style={{
+                        padding: '14px 16px', borderRadius: 10, marginBottom: 16,
+                        background: 'rgba(0,80,200,0.06)', border: '1px solid rgba(0,160,255,0.15)',
+                      }}>
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'rgba(90,120,160,0.7)', letterSpacing: '0.07em', display: 'block', marginBottom: 5 }}>PLAN TITLE</label>
+                          <input
+                            value={newPlanTitle}
+                            onChange={e => setNewPlanTitle(e.target.value)}
+                            placeholder="e.g. Launch checklist, Design sprint, Weekly review"
+                            style={{
+                              width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
+                              background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,160,255,0.15)',
+                              color: 'rgba(200,220,245,0.9)', outline: 'none', boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                        <div style={{ marginBottom: 12 }}>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'rgba(90,120,160,0.7)', letterSpacing: '0.07em', display: 'block', marginBottom: 5 }}>
+                            STEPS (one per line)
+                          </label>
+                          <textarea
+                            value={newPlanSteps}
+                            onChange={e => setNewPlanSteps(e.target.value)}
+                            placeholder="Step 1&#10;Step 2&#10;Step 3"
+                            rows={4}
+                            style={{
+                              width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 12,
+                              background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,160,255,0.15)',
+                              color: 'rgba(200,220,245,0.9)', outline: 'none', resize: 'vertical',
+                              lineHeight: 1.6, boxSizing: 'border-box', fontFamily: 'inherit',
+                            }}
+                          />
+                        </div>
+                        <Button onClick={handleSavePlan} loading={savingPlan} size="sm">
+                          <BookMarked size={12} /> Save Plan
+                        </Button>
+                      </div>
+                    )}
+
+                    {plansLoading ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}><Spinner /></div>
+                    ) : savedPlans.length === 0 ? (
+                      <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.6)', textAlign: 'center', padding: '16px 0' }}>
+                        No saved plans yet. Create one to reference during focus sessions.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {savedPlans.map(plan => (
+                          <div key={plan.id} style={{
+                            padding: '12px 14px', borderRadius: 10,
+                            background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0,160,255,0.1)',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: plan.steps.length > 0 ? 8 : 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <BookMarked size={13} style={{ color: '#40b8ff', flexShrink: 0 }} />
+                                <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>{plan.title}</span>
+                              </div>
+                              <button
+                                onClick={() => handleDeletePlan(plan.id)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(90,120,160,0.4)', flexShrink: 0, padding: 2 }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                            {plan.steps.length > 0 && (
+                              <ol style={{ paddingLeft: 18, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {plan.steps.map((step, i) => (
+                                  <li key={i} style={{ fontSize: 12, color: 'rgba(130,170,220,0.8)', lineHeight: 1.5 }}>{step}</li>
+                                ))}
+                              </ol>
+                            )}
+                            {plan.source !== 'manual' && (
+                              <span style={{ fontSize: 10, color: 'rgba(70,100,140,0.5)', marginTop: 6, display: 'block' }}>from {plan.source}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>

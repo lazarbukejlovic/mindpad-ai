@@ -11,3 +11,14 @@ apps/web/.next
 apps/web/out
 
 .DS_Store
+
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.*.local
+apps/api/.env
+apps/api/.env.local
+apps/web/.env
+apps/web/.env.local

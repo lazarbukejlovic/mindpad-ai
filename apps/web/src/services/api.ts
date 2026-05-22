@@ -21,13 +21,14 @@ export class ApiClient {
 
   private static async request<T>(
     endpoint: string,
-    options?: RequestInit
+    options?: RequestInit,
+    timeoutMs = 4000
   ): Promise<T> {
     const url = `${API_URL}${endpoint}`;
 
     // Add a short timeout so the UI can fall back quickly if the API is down
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url, {
@@ -83,7 +84,7 @@ export class ApiClient {
   }
 
   static getMe() {
-    return this.request<{ email: string }>('/auth/me').catch(() => {
+    return this.request<{ email: string; name?: string; avatarUrl?: string; authProvider?: string }>('/auth/me').catch(() => {
       if (typeof window === 'undefined') return { email: '' } as any;
       const me = JSON.parse(localStorage.getItem('md:me') || 'null');
       return me || { email: '' };
@@ -193,8 +194,12 @@ export class ApiClient {
       summary: string;
       tasks: string[];
       priorities: string[];
+      categories: string[];
+      estimatedMinutes: number[];
       focusRecommendation: string;
       reasoning: string;
+      dailyPlanSuggestion?: string;
+      mode: 'ai' | 'offline';
     }>('/ai/organize', {
       method: 'POST',
       body: JSON.stringify({ content }),
@@ -209,37 +214,117 @@ export class ApiClient {
         summary,
         tasks,
         priorities,
+        categories: tasks.map(() => 'General'),
+        estimatedMinutes: tasks.map(() => 25),
         focusRecommendation: tasks.length ? `Start with: ${tasks[0]}` : 'No recommendation',
-        reasoning: 'Fallback organizer: sentence-based extraction',
-      } as any;
+        reasoning: 'Extracted using sentence analysis.',
+        mode: 'offline' as const,
+      };
     });
   }
 
-   static getMorningBrief(context?: string) {
+  static getMorningBrief(workspaceContext?: object) {
     return this.request<{
-      briefText: string;
-      topPriority: string;
-      suggestedFocusTime: number;
-      keyThemesText: string;
+      mainPriority: string;
+      topActions: string[];
+      suggestedFocusBlock: string;
+      warning: string;
+      message: string;
+      mode: 'ai' | 'offline';
     }>('/ai/morning-brief', {
       method: 'POST',
-      body: JSON.stringify({ context }),
-    }).catch(() => {
-      const briefText = context ? `Brief based on: ${context}` : 'No tasks available to summarize.';
-      return { briefText, topPriority: '', suggestedFocusTime: 25, keyThemesText: '' } as any;
-    });
+      body: JSON.stringify({ workspaceContext }),
+    }).catch(() => ({
+      mainPriority: 'Review your active tasks and pick the most important one',
+      topActions: ['Start a brain dump', 'Prioritize your top task', 'Begin a focus session'],
+      suggestedFocusBlock: 'Start with a 25-minute focused session',
+      warning: '',
+      message: 'Clarity beats hustle. Start by picking one thing.',
+      mode: 'offline' as const,
+    }));
   }
 
-  static getEveningSummary(accomplishments: string[]) {
+  static getEveningSummary(accomplishments: string[], workspaceContext?: object) {
     return this.request<{
       summary: string;
       accomplishments: string[];
-      lessonsLearned: string[];
-      tomorrowPreview: string;
+      unfinished: string[];
+      tomorrowPriority: string;
+      improvement: string;
+      mode: 'ai' | 'offline';
     }>('/ai/evening-summary', {
       method: 'POST',
-      body: JSON.stringify({ accomplishments }),
-    });
+      body: JSON.stringify({ accomplishments, workspaceContext }),
+    }).catch(() => ({
+      summary: accomplishments.length > 0
+        ? `You completed ${accomplishments.length} task${accomplishments.length !== 1 ? 's' : ''} today.`
+        : 'No tasks completed today.',
+      accomplishments,
+      unfinished: [],
+      tomorrowPriority: 'Review your tasks and pick a top priority',
+      improvement: 'Start tomorrow with a single clear intention.',
+      mode: 'offline' as const,
+    }));
+  }
+
+  static async getAIStatus(): Promise<{ configured: boolean; available: boolean; mode: 'ai' | 'offline'; reason?: string }> {
+    // Uses a longer timeout because this endpoint makes a real AI test call.
+    const url = `${API_URL}/ai/status`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await fetch(url, { headers: this.getHeaders(), signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    } catch {
+      clearTimeout(timeout);
+      return { configured: false, available: false, mode: 'offline' as const };
+    }
+  }
+
+  static askMindPad(question: string, workspaceContext: object) {
+    return this.request<{
+      answer: string;
+      sections: Array<{ title: string; content: string }>;
+      suggestedActions: string[];
+      mode: 'ai' | 'offline';
+    }>('/ai/ask', {
+      method: 'POST',
+      body: JSON.stringify({ question, workspaceContext }),
+    }).catch(() => ({
+      answer: 'Your request could not be completed. Check your connection and try again.',
+      sections: [],
+      suggestedActions: [],
+      mode: 'offline' as const,
+    }));
+  }
+
+  static getFocusRecommendation(workspaceContext: object) {
+    return this.request<{
+      suggestedTask: string | null;
+      why: string;
+      sessionLength: number;
+      firstStep: string;
+      warning: string | null;
+      mode: 'ai' | 'offline';
+    }>('/ai/focus-recommendation', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceContext }),
+    }).catch(() => null);
+  }
+
+  static getTaskCleanup(tasks: Array<{ title: string; priority: string; completed: boolean }>) {
+    return this.request<{
+      nextAction: string;
+      highPriority: string[];
+      vague: string[];
+      recommendation: string;
+      mode: 'ai' | 'offline';
+    }>('/ai/task-cleanup', {
+      method: 'POST',
+      body: JSON.stringify({ tasks }),
+    }).catch(() => null);
   }
 
   // Tasks
@@ -438,6 +523,100 @@ export class ApiClient {
       localStorage.setItem(key, JSON.stringify(next));
       return undefined as void;
     });
+  }
+
+  // Billing
+  static getBillingStatus() {
+    return this.request<import('@/types/index').BillingStatus>('/billing/status');
+  }
+
+  static createCheckoutSession(plan: 'pro' | 'team') {
+    return this.request<{ url: string | null }>('/billing/create-checkout-session', {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    });
+  }
+
+  static createPortalSession() {
+    return this.request<{ url: string }>('/billing/create-portal-session', {
+      method: 'POST',
+    });
+  }
+
+  // Team
+  static getTeamWorkspace() {
+    return this.request<import('@/types/index').TeamWorkspaceState>('/team');
+  }
+
+  static createTeamWorkspace(name: string) {
+    return this.request<import('@/types/index').TeamWorkspace>('/team', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  static updateTeamWorkspace(name: string) {
+    return this.request<import('@/types/index').TeamWorkspace>('/team', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  static inviteTeamMember(email: string) {
+    return this.request<{ invitedEmails: string[] }>('/team/invite', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  static removeTeamInvite(email: string) {
+    return this.request<{ invitedEmails: string[] }>('/team/invite', {
+      method: 'DELETE',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  // Execution Plans
+  static getExecutionPlans() {
+    return this.request<import('@/types/index').SavedExecutionPlan[]>('/execution-plans');
+  }
+
+  static saveExecutionPlan(data: { title: string; summary?: string; steps?: string[]; source?: string }) {
+    return this.request<import('@/types/index').SavedExecutionPlan>('/execution-plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  static deleteExecutionPlan(id: string) {
+    return this.request<void>(`/execution-plans/${id}`, { method: 'DELETE' });
+  }
+
+  // Reports (longer timeout)
+  static generateExportSummary() {
+    return this.request<import('@/types/index').ExportSummary>('/reports/export-summary', { method: 'POST' }, 30000);
+  }
+
+  static generateWeeklyReview() {
+    return this.request<import('@/types/index').WeeklyReview>('/reports/weekly-review', { method: 'POST' }, 30000);
+  }
+
+  // Team extended
+  static addSharedProject(name: string, description?: string) {
+    return this.request<{ sharedProjects: import('@/types/index').SharedProject[] }>('/team/shared-projects', {
+      method: 'POST',
+      body: JSON.stringify({ name, description: description || '' }),
+    });
+  }
+
+  static deleteSharedProject(id: string) {
+    return this.request<{ sharedProjects: import('@/types/index').SharedProject[] }>(`/team/shared-projects/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  static generateTeamWeeklyReport() {
+    return this.request<import('@/types/index').TeamWeeklyReport>('/team/weekly-report', { method: 'POST' }, 30000);
   }
 
   // Analytics

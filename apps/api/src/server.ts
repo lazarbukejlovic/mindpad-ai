@@ -9,35 +9,53 @@ import taskRoutes from './routes/taskRoutes';
 import focusRoutes from './routes/focusRoutes';
 import analyticsRoutes from './routes/analyticsRoutes';
 import aiRoutes from './routes/aiRoutes';
+import billingRoutes from './routes/billingRoutes';
+import webhookRoutes from './routes/webhookRoutes';
+import teamRoutes from './routes/teamRoutes';
+import executionPlanRoutes from './routes/executionPlanRoutes';
+import reportsRoutes from './routes/reportsRoutes';
+import { getAIStatus } from './services/aiService';
 
 const app = express();
 
-// Middleware
 app.use(cors({ origin: config.clientUrl }));
+
+// Stripe webhooks need raw body for signature verification — register BEFORE express.json()
+app.use('/api/stripe', express.raw({ type: 'application/json' }), webhookRoutes);
+
+// All other routes get JSON parsing
 app.use(express.json());
 
-// Database connection
 connectDB().catch(console.error);
 
-// Health check
 app.get('/api/health', (_req: express.Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/brain-dumps', authMiddleware, brainDumpRoutes);
 app.use('/api/tasks', authMiddleware, taskRoutes);
 app.use('/api/focus-sessions', authMiddleware, focusRoutes);
 app.use('/api/analytics', authMiddleware, analyticsRoutes);
+app.use('/api/billing', authMiddleware, billingRoutes);
+app.use('/api/team', authMiddleware, teamRoutes);
+app.use('/api/execution-plans', authMiddleware, executionPlanRoutes);
+app.use('/api/reports', authMiddleware, reportsRoutes);
+
+// Public AI status — registered before authMiddleware covers /api/ai
+app.get('/api/ai/status', async (_req: express.Request, res: Response) => {
+  try {
+    res.json(await getAIStatus());
+  } catch {
+    res.json({ configured: false, available: false, mode: 'offline', reason: 'unknown' });
+  }
+});
 app.use('/api/ai', authMiddleware, aiRoutes);
 
-// 404 handler
 app.use((_req: express.Request, res: Response) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler
 app.use(
   (
     err: Error,

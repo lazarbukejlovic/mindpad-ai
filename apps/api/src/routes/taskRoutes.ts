@@ -7,6 +7,7 @@ import {
   deleteTask,
 } from '../controllers/taskController';
 import { AuthRequest } from '../middleware/auth';
+import { PlanError } from '../config/plans';
 
 const router = Router();
 
@@ -34,6 +35,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     const task = await createTask(req.userId, req.body);
     res.status(201).json(task);
   } catch (error: unknown) {
+    if (error instanceof PlanError) {
+      res.status(403).json({ error: error.message, code: error.code, requiredPlan: error.requiredPlan });
+      return;
+    }
     const message = error instanceof Error ? error.message : 'Failed to create task';
     res.status(400).json({ error: message });
   }

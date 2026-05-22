@@ -14,6 +14,8 @@ import {
   Menu,
   X,
   Zap,
+  Users,
+  Tag,
 } from 'lucide-react';
 import { removeToken } from '@/lib/auth';
 import DarkModeToggle from './DarkModeToggle';
@@ -24,7 +26,9 @@ const navItems = [
   { href: '/tasks',      label: 'Tasks',       icon: CheckSquare },
   { href: '/focus',      label: 'Focus',       icon: Timer },
   { href: '/analytics',  label: 'Analytics',   icon: BarChart3 },
+  { href: '/team',       label: 'Team',        icon: Users },
   { href: '/settings',   label: 'Settings',    icon: Settings },
+  { href: '/pricing',    label: 'Pricing',     icon: Tag },
 ];
 
 /* Shared styles as constants to avoid repetition */

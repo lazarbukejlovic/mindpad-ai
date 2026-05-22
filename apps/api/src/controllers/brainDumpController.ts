@@ -1,9 +1,11 @@
 import { BrainDump } from '../models/BrainDump';
+import { User } from '../models/User';
 import { isMongoConnected } from '../config/database';
 import { memoryStore } from '../services/memoryStore';
 import { randomUUID } from 'crypto';
 import { organizeWithAI } from '../services/aiService';
 import { z } from 'zod';
+import { PLAN_CONFIG, PlanError, Plan } from '../config/plans';
 
 const CreateBrainDumpSchema = z.object({
   content: z.string().min(1, 'Content is required'),
@@ -81,8 +83,29 @@ export async function deleteBrainDump(userId: string, dumpId: string) {
 }
 
 export async function organizeBrainDump(userId: string, content: string) {
-  // Validate input
   const validated = OrganizeBrainDumpSchema.parse({ content });
+
+  // Enforce daily extraction limit for MongoDB users
+  if (isMongoConnected()) {
+    const user = await User.findById(userId);
+    if (user) {
+      const plan = (user.plan as Plan) || 'free';
+      const { dailyBrainDumpExtractions } = PLAN_CONFIG[plan];
+      const today = new Date().toDateString();
+      const lastDate = user.dailyExtractionsUsedDate?.toDateString();
+      const used = lastDate === today ? (user.dailyExtractionsUsed || 0) : 0;
+      if (used >= dailyBrainDumpExtractions) {
+        throw new PlanError(
+          `Daily extraction limit reached (${dailyBrainDumpExtractions} on ${plan} plan)`,
+          'PLAN_LIMIT_REACHED',
+          plan === 'free' ? 'pro' : 'team'
+        );
+      }
+      user.dailyExtractionsUsed = used + 1;
+      user.dailyExtractionsUsedDate = new Date();
+      await user.save();
+    }
+  }
 
   // Get AI organization
   const result = await organizeWithAI(validated.content);
@@ -103,8 +126,12 @@ export async function organizeBrainDump(userId: string, content: string) {
       summary: result.summary,
       tasks: result.tasks,
       priorities: result.priorities,
+      categories: result.categories,
+      estimatedMinutes: result.estimatedMinutes,
       focusRecommendation: result.focusRecommendation,
       reasoning: result.reasoning,
+      dailyPlanSuggestion: result.dailyPlanSuggestion,
+      mode: result.mode,
     };
   } else {
     const id = randomUUID();
@@ -122,8 +149,12 @@ export async function organizeBrainDump(userId: string, content: string) {
       summary: result.summary,
       tasks: result.tasks,
       priorities: result.priorities,
+      categories: result.categories,
+      estimatedMinutes: result.estimatedMinutes,
       focusRecommendation: result.focusRecommendation,
       reasoning: result.reasoning,
+      dailyPlanSuggestion: result.dailyPlanSuggestion,
+      mode: result.mode,
     };
   }
 }

@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ListTodo, CheckCircle2, CalendarDays, Clock,
   Sparkles, Brain, Timer, ArrowRight, Flame, Zap,
+  Send, MessageSquare, ChevronRight,
 } from 'lucide-react';
 import { ApiClient } from '@/services/api';
-import { getToken } from '@/lib/auth';
-import { AnalyticsSummary, Task, BrainDump } from '@/types/index';
+import { getToken, saveToken } from '@/lib/auth';
+import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief } from '@/types/index';
+import { buildWorkspaceContext } from '@/lib/aiContext';
 import AppNav from '@/components/layout/AppNav';
 import KPICard from '@/components/ui/KPICard';
 import Button from '@/components/ui/Button';
@@ -26,37 +28,32 @@ function getGreeting() {
 
 const priorityVariant = { high: 'danger', medium: 'warning', low: 'success' } as const;
 
-/* Reusable premium section card */
-function PanelCard({ title, action, children }: {
+const panel: React.CSSProperties = {
+  background: 'rgba(5, 10, 22, 0.72)',
+  backdropFilter: 'blur(20px)',
+  WebkitBackdropFilter: 'blur(20px)',
+  border: '1px solid rgba(0, 160, 255, 0.12)',
+  borderRadius: '1rem',
+  overflow: 'hidden',
+};
+
+function PanelCard({ title, action, children, badge }: {
   title?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
+  badge?: React.ReactNode;
 }) {
   return (
-    <div style={{
-      background: 'rgba(5, 10, 22, 0.72)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      border: '1px solid rgba(0, 160, 255, 0.12)',
-      borderRadius: '1rem',
-      overflow: 'hidden',
-      transition: 'border-color 0.2s, box-shadow 0.2s',
-    }}
-      onMouseEnter={e => {
-        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,160,255,0.24)';
-        (e.currentTarget as HTMLElement).style.boxShadow   = '0 0 40px rgba(0,60,180,0.08)';
-      }}
-      onMouseLeave={e => {
-        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,160,255,0.12)';
-        (e.currentTarget as HTMLElement).style.boxShadow   = 'none';
-      }}
-    >
+    <div style={panel}>
       {title && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px 12px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+          padding: '14px 20px 12px', borderBottom: '1px solid rgba(0,160,255,0.07)',
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>{title}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>{title}</span>
+            {badge}
+          </div>
           {action && <div>{action}</div>}
         </div>
       )}
@@ -67,6 +64,13 @@ function PanelCard({ title, action, children }: {
   );
 }
 
+const SUGGESTED_QUESTIONS = [
+  'What should I focus on first?',
+  'Create a 3-hour execution plan',
+  'Which tasks are vague or unclear?',
+  'What is the smallest next step?',
+];
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading]           = useState(true);
@@ -75,12 +79,34 @@ export default function DashboardPage() {
   const [brainDumps, setBrainDumps]     = useState<BrainDump[]>([]);
   const [userEmail, setUserEmail]       = useState('');
   const [error, setError]               = useState('');
-  const [brief, setBrief]               = useState('');
+
+  // AI status
+  const [aiMode, setAiMode]             = useState<'ai' | 'offline' | null>(null);
+
+  // Morning brief
+  const [brief, setBrief]               = useState<MorningBrief | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
 
+  // Ask MindPad AI
+  const [question, setQuestion]         = useState('');
+  const [askResult, setAskResult]       = useState<AskResult | null>(null);
+  const [askLoading, setAskLoading]     = useState(false);
+  const [askError, setAskError]         = useState('');
+
   useEffect(() => {
+    // Capture Google OAuth token from redirect URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google') === 'success') {
+      const googleToken = params.get('token');
+      if (googleToken) {
+        saveToken(googleToken);
+        try { window.history.replaceState(null, '', '/dashboard'); } catch {}
+      }
+    }
+
     if (!getToken()) { setLoading(false); router.push('/login'); return; }
     loadDashboard();
+    ApiClient.getAIStatus().then(s => setAiMode(s.mode)).catch(() => setAiMode('offline'));
   }, [router]);
 
   async function loadDashboard() {
@@ -111,17 +137,49 @@ export default function DashboardPage() {
   async function handleGenerateBrief() {
     setBriefLoading(true);
     try {
-      const activeTitles = activeTasks.slice(0, 5).map(t => t.title).join(', ');
-      const result = await ApiClient.getMorningBrief(activeTitles);
-      setBrief(result.briefText);
+      const ctx = buildWorkspaceContext({ tasks, analytics, brainDumps: brainDumps as any });
+      const result = await ApiClient.getMorningBrief(ctx);
+      setBrief(result);
+      setAiMode(result.mode); // sync header badge to actual result mode
     } catch {
-      setBrief('Could not generate brief. Make sure the API is running.');
+      setBrief({
+        mainPriority: 'Review your active tasks and pick the most important one',
+        topActions: ['Start a brain dump', 'Prioritize your top task', 'Begin a focus session'],
+        suggestedFocusBlock: 'Start with a 25-minute focused session',
+        warning: '',
+        message: 'Clarity beats hustle. Start by picking one thing.',
+        mode: 'offline',
+      });
     } finally {
       setBriefLoading(false);
     }
   }
 
-  const activeTasks   = tasks.filter(t => !t.completed);
+  async function handleAsk(e?: FormEvent) {
+    e?.preventDefault();
+    if (!question.trim()) return;
+    setAskError('');
+    setAskResult(null);
+    setAskLoading(true);
+    try {
+      const ctx = buildWorkspaceContext({ tasks, analytics, brainDumps: brainDumps as any });
+      const result = await ApiClient.askMindPad(question.trim(), ctx);
+      setAskResult(result);
+      setAiMode(result.mode); // sync header badge to actual result mode
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : 'Failed to get answer');
+    } finally {
+      setAskLoading(false);
+    }
+  }
+
+  function handleSuggestedQuestion(q: string) {
+    setQuestion(q);
+    setAskResult(null);
+    setAskError('');
+  }
+
+  const activeTasks    = tasks.filter(t => !t.completed);
   const completedToday = tasks.filter(t =>
     t.completed && new Date(t.updatedAt).toDateString() === new Date().toDateString()
   ).length;
@@ -143,7 +201,7 @@ export default function DashboardPage() {
             )}
 
             {/* ── Header ── */}
-            <div style={{ marginBottom: 36 }}>
+            <div style={{ marginBottom: 32 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
                 <div>
                   <h1 style={{
@@ -158,24 +216,32 @@ export default function DashboardPage() {
                     <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.9)' }}>{dateLabel}</p>
                     {analytics && analytics.weeklyStreak >= 3 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#ffb700' }}>
-                        <Flame size={13} />
-                        {analytics.weeklyStreak}-day streak
+                        <Flame size={13} />{analytics.weeklyStreak}-day streak
                       </div>
                     )}
                   </div>
                 </div>
-                {/* AI status badge */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '7px 14px', borderRadius: 99,
-                  background: 'rgba(0,130,255,0.08)',
-                  border: '1px solid rgba(0,160,255,0.18)',
-                  flexShrink: 0,
-                }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#00c0ff', boxShadow: '0 0 8px rgba(0,200,255,0.9)' }} />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,200,255,0.85)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>AI Online</span>
-                  <Zap size={11} style={{ color: 'rgba(255,185,0,0.8)' }} />
-                </div>
+                {aiMode !== null && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    padding: '7px 14px', borderRadius: 99, flexShrink: 0,
+                    background: aiMode === 'ai' ? 'rgba(0,130,255,0.08)' : 'rgba(60,70,90,0.15)',
+                    border: `1px solid ${aiMode === 'ai' ? 'rgba(0,160,255,0.18)' : 'rgba(80,100,140,0.25)'}`,
+                  }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: aiMode === 'ai' ? '#00c0ff' : 'rgba(120,140,180,0.6)',
+                      boxShadow: aiMode === 'ai' ? '0 0 8px rgba(0,200,255,0.9)' : 'none',
+                    }} />
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                      color: aiMode === 'ai' ? 'rgba(0,200,255,0.85)' : 'rgba(120,150,190,0.7)',
+                    }}>
+                      {aiMode === 'ai' ? 'MindPad AI' : 'Execution Assistant'}
+                    </span>
+                    {aiMode === 'ai' && <Zap size={11} style={{ color: 'rgba(255,185,0,0.8)' }} />}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -189,35 +255,227 @@ export default function DashboardPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 32 }}
                   className="md:grid-cols-4">
                   <KPICard label="Total Tasks"  value={tasks.length}                      sub={`${activeTasks.length} active`} icon={ListTodo}    accentColor="#00a0ff" />
-                  <KPICard label="Completed"    value={analytics?.completedTasks ?? 0}  sub="all time"                       icon={CheckCircle2} accentColor="#22c55e" />
-                  <KPICard label="Today"        value={completedToday}                   sub="tasks done"                     icon={CalendarDays} accentColor="#a78bfa" />
-                  <KPICard label="Focus Time"   value={analytics?.totalFocusMinutes ?? 0} sub="total minutes"                icon={Clock}        accentColor="#ffb700" />
+                  <KPICard label="Completed"    value={analytics?.completedTasks ?? 0}   sub="all time"                       icon={CheckCircle2} accentColor="#22c55e" />
+                  <KPICard label="Today"        value={completedToday}                    sub="tasks done"                     icon={CalendarDays} accentColor="#a78bfa" />
+                  <KPICard label="Focus Time"   value={analytics?.totalFocusMinutes ?? 0} sub="total minutes"                 icon={Clock}        accentColor="#ffb700" />
+                </div>
+
+                {/* ── Ask MindPad AI (full width) ── */}
+                <div style={{ ...panel, marginBottom: 24 }}>
+                  <div style={{
+                    padding: '14px 20px 12px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <MessageSquare size={14} style={{ color: '#40b8ff' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Ask MindPad AI</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#40b8ff', letterSpacing: '0.04em' }}>
+                      <Sparkles size={11} />Execution Assistant
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px 20px 20px' }}>
+                    {/* Suggested questions */}
+                    {!askResult && !askLoading && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                        {SUGGESTED_QUESTIONS.map(q => (
+                          <button key={q} onClick={() => handleSuggestedQuestion(q)} style={{
+                            padding: '5px 12px', borderRadius: 99,
+                            background: question === q ? 'rgba(0,130,255,0.14)' : 'rgba(0,80,160,0.08)',
+                            border: `1px solid ${question === q ? 'rgba(0,160,255,0.35)' : 'rgba(0,160,255,0.14)'}`,
+                            color: question === q ? 'rgba(140,200,255,0.95)' : 'rgba(100,150,200,0.75)',
+                            fontSize: 11, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
+                          }}>
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Input row */}
+                    <form onSubmit={handleAsk} style={{ display: 'flex', gap: 10 }}>
+                      <input
+                        value={question}
+                        onChange={e => setQuestion(e.target.value)}
+                        placeholder="What should I focus on? Create a plan. Which task has the highest leverage?"
+                        disabled={askLoading}
+                        style={{
+                          flex: 1, height: 42, padding: '0 14px', borderRadius: 10,
+                          background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,160,255,0.18)',
+                          color: 'rgba(200,220,245,0.92)', fontSize: 13, outline: 'none',
+                          fontFamily: 'inherit', transition: 'border-color 0.15s, box-shadow 0.15s',
+                        }}
+                        onFocus={e => {
+                          e.target.style.borderColor = 'rgba(0,160,255,0.45)';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(0,160,255,0.08)';
+                        }}
+                        onBlur={e => {
+                          e.target.style.borderColor = 'rgba(0,160,255,0.18)';
+                          e.target.style.boxShadow = 'none';
+                        }}
+                      />
+                      <button type="submit" disabled={askLoading || !question.trim()} style={{
+                        width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+                        background: question.trim() ? 'linear-gradient(135deg, #0080d8, #0055a8)' : 'rgba(0,80,160,0.12)',
+                        border: '1px solid rgba(0,160,255,0.25)',
+                        color: question.trim() ? '#fff' : 'rgba(80,120,170,0.5)',
+                        cursor: question.trim() && !askLoading ? 'pointer' : 'not-allowed',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'all 0.15s',
+                      }}>
+                        {askLoading
+                          ? <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+                          : <Send size={15} />}
+                      </button>
+                    </form>
+
+                    {/* Error */}
+                    {askError && (
+                      <p style={{ marginTop: 10, fontSize: 12, color: 'rgba(239,68,68,0.8)' }}>{askError}</p>
+                    )}
+
+                    {/* Answer */}
+                    {askResult && (
+                      <div style={{ marginTop: 16 }}>
+                        {/* Main answer */}
+                        <div style={{
+                          padding: '12px 16px', borderRadius: 10, marginBottom: 14,
+                          background: 'rgba(0,80,200,0.07)', borderLeft: '3px solid rgba(0,160,255,0.5)',
+                          fontSize: 14, color: 'rgba(200,225,255,0.92)', lineHeight: 1.65,
+                        }}>
+                          {askResult.answer}
+                        </div>
+
+                        {/* Sections */}
+                        {askResult.sections.length > 0 && (
+                          <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}
+                            className="md:grid-cols-2">
+                            {askResult.sections.map((s, i) => (
+                              <div key={i} style={{
+                                padding: '12px 14px', borderRadius: 10,
+                                background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0,160,255,0.1)',
+                              }}>
+                                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#40b8ff', marginBottom: 6 }}>
+                                  {s.title}
+                                </p>
+                                <p style={{ fontSize: 13, color: 'rgba(180,210,240,0.85)', lineHeight: 1.55 }}>
+                                  {s.content}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Suggested actions */}
+                        {askResult.suggestedActions.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            <span style={{ fontSize: 11, color: 'rgba(80,110,160,0.7)', alignSelf: 'center' }}>Next:</span>
+                            {askResult.suggestedActions.map((action, i) => (
+                              <div key={i} style={{
+                                display: 'flex', alignItems: 'center', gap: 5,
+                                padding: '4px 12px', borderRadius: 99,
+                                background: 'rgba(0,130,255,0.08)', border: '1px solid rgba(0,160,255,0.18)',
+                                fontSize: 12, color: 'rgba(120,180,255,0.9)',
+                              }}>
+                                <ChevronRight size={11} />{action}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Reset */}
+                        <button onClick={() => { setAskResult(null); setQuestion(''); }} style={{
+                          marginTop: 12, fontSize: 11, color: 'rgba(70,100,140,0.65)',
+                          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                        }}>
+                          Ask another question
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gap: 24 }} className="md:grid-cols-3">
                   {/* Left 2/3 */}
                   <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
                     {/* AI Morning Brief */}
                     <PanelCard
                       title="AI Morning Brief"
+                      badge={<Badge variant="info" className="ml-1">MindPad AI</Badge>}
                       action={
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#40b8ff', letterSpacing: '0.04em' }}>
-                          <Sparkles size={12} />MindPad AI
-                        </div>
+                        brief ? (
+                          <button onClick={() => setBrief(null)} style={{ fontSize: 11, color: 'rgba(80,110,160,0.65)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                            Refresh
+                          </button>
+                        ) : undefined
                       }
                     >
                       {!brief ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
                           <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.85)', lineHeight: 1.6 }}>
-                            Generate a personalized AI brief based on your active tasks.
+                            Generate a personalized AI brief based on your tasks, focus history, and notes.
                           </p>
                           <Button size="sm" onClick={handleGenerateBrief} loading={briefLoading}>
                             <Sparkles size={13} /> Generate Brief
                           </Button>
                         </div>
                       ) : (
-                        <div style={{ paddingLeft: 16, borderLeft: '2px solid rgba(0,160,255,0.5)', fontSize: 13, color: 'rgba(200,220,240,0.9)', lineHeight: 1.7 }}>
-                          {brief}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                          {/* Main priority */}
+                          <div style={{
+                            padding: '12px 16px', borderRadius: 10,
+                            background: 'rgba(255,150,0,0.06)', border: '1px solid rgba(255,185,0,0.2)',
+                            display: 'flex', gap: 10, alignItems: 'flex-start',
+                          }}>
+                            <Zap size={14} style={{ color: '#ffb700', flexShrink: 0, marginTop: 1 }} />
+                            <div>
+                              <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#ffb700', marginBottom: 4 }}>Main Priority</p>
+                              <p style={{ fontSize: 13, color: 'rgba(200,220,245,0.92)', lineHeight: 1.55, fontWeight: 500 }}>{brief.mainPriority}</p>
+                            </div>
+                          </div>
+
+                          {/* Top actions */}
+                          {brief.topActions.length > 0 && (
+                            <div>
+                              <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(100,140,190,0.7)', marginBottom: 8 }}>Top 3 Actions</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {brief.topActions.map((action, i) => (
+                                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <span style={{
+                                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                                      background: 'rgba(0,130,255,0.12)', border: '1px solid rgba(0,160,255,0.2)',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      fontSize: 10, fontWeight: 700, color: '#40b8ff',
+                                    }}>{i + 1}</span>
+                                    <span style={{ fontSize: 13, color: 'rgba(180,210,240,0.85)' }}>{action}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Focus block suggestion */}
+                          {brief.suggestedFocusBlock && (
+                            <div style={{ padding: '10px 14px', borderRadius: 9, background: 'rgba(0,80,200,0.07)', border: '1px solid rgba(0,160,255,0.12)', fontSize: 13, color: 'rgba(150,200,255,0.85)', lineHeight: 1.55 }}>
+                              <Timer size={12} style={{ display: 'inline', marginRight: 6, color: '#40b8ff', verticalAlign: 'middle' }} />
+                              {brief.suggestedFocusBlock}
+                            </div>
+                          )}
+
+                          {/* Warning */}
+                          {brief.warning && (
+                            <div style={{ padding: '10px 14px', borderRadius: 9, background: 'rgba(220,150,0,0.07)', border: '1px solid rgba(220,150,0,0.2)', fontSize: 12, color: 'rgba(255,185,100,0.85)' }}>
+                              ⚠ {brief.warning}
+                            </div>
+                          )}
+
+                          {/* Message */}
+                          {brief.message && (
+                            <p style={{ fontSize: 12, color: 'rgba(80,120,170,0.75)', fontStyle: 'italic', borderTop: '1px solid rgba(0,160,255,0.07)', paddingTop: 12 }}>
+                              "{brief.message}"
+                            </p>
+                          )}
                         </div>
                       )}
                     </PanelCard>
@@ -245,20 +503,17 @@ export default function DashboardPage() {
                             <div key={task.id} style={{
                               display: 'flex', alignItems: 'center', gap: 12,
                               padding: '10px 12px', borderRadius: 10, cursor: 'default',
-                              transition: 'background 0.15s',
-                              background: 'rgba(0,0,0,0)',
+                              transition: 'background 0.15s', background: 'rgba(0,0,0,0)',
                             }}
                               onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,100,200,0.05)'}
                               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0)'}
                             >
-                              <button
-                                onClick={() => handleToggleTask(task)}
-                                style={{
-                                  width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-                                  border: '1.5px solid rgba(0,160,255,0.3)',
-                                  background: 'transparent', cursor: 'pointer',
-                                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                                }}
+                              <button onClick={() => handleToggleTask(task)} style={{
+                                width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                                border: '1.5px solid rgba(0,160,255,0.3)',
+                                background: 'transparent', cursor: 'pointer',
+                                transition: 'border-color 0.15s, box-shadow 0.15s',
+                              }}
                                 onMouseEnter={e => {
                                   (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,160,255,0.8)';
                                   (e.currentTarget as HTMLElement).style.boxShadow = '0 0 8px rgba(0,160,255,0.3)';
@@ -290,9 +545,9 @@ export default function DashboardPage() {
                     <PanelCard title="Quick Actions">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {[
-                          { href: '/brain-dump', icon: Brain,   label: 'New Brain Dump', primary: true },
-                          { href: '/focus',      icon: Timer,   label: 'Start Focus',    primary: false },
-                          { href: '/tasks',      icon: ListTodo,label: 'Manage Tasks',   primary: false },
+                          { href: '/brain-dump', icon: Brain,    label: 'New Brain Dump', primary: true },
+                          { href: '/focus',      icon: Timer,    label: 'Start Focus',    primary: false },
+                          { href: '/tasks',      icon: ListTodo, label: 'Manage Tasks',   primary: false },
                         ].map(({ href, icon: Icon, label, primary }) => (
                           <Link key={href} href={href} style={{
                             display: 'flex', alignItems: 'center', gap: 10,
@@ -313,8 +568,7 @@ export default function DashboardPage() {
                               el.style.color = primary ? '#50c8ff' : 'rgba(110,150,190,0.8)';
                             }}
                           >
-                            <Icon size={15} />
-                            {label}
+                            <Icon size={15} />{label}
                           </Link>
                         ))}
                       </div>
@@ -336,8 +590,7 @@ export default function DashboardPage() {
                           {brainDumps.map(dump => (
                             <div key={dump.id} style={{
                               padding: 12, borderRadius: 10,
-                              background: 'rgba(0,0,0,0.3)',
-                              border: '1px solid rgba(0,160,255,0.08)',
+                              background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0,160,255,0.08)',
                             }}>
                               <p style={{ fontSize: 10, color: 'rgba(70,100,140,0.8)', marginBottom: 5 }}>
                                 {new Date(dump.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -380,6 +633,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   );
 }
