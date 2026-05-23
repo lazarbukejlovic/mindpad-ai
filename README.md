@@ -4,9 +4,9 @@ MindPad AI is a full-stack productivity SaaS MVP for turning scattered thoughts,
 
 The product combines AI-powered brain dumping, task extraction, focus planning, analytics, saved execution plans, team workspaces, Google login, MongoDB persistence, and Stripe subscription billing into one polished SaaS-style application.
 
-## Live Demo
+## Live 
 
-Coming soon after deployment.
+https://mindpad-ai-five.vercel.app/
 
 ## Overview
 
