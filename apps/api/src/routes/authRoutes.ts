@@ -1,5 +1,14 @@
 import { Router, Request, Response } from 'express';
-import { register, login, getMe, AuthError } from '../controllers/authController';
+import {
+  register,
+  login,
+  getMe,
+  forgotPassword,
+  resetPassword,
+  sendVerificationEmailForUser,
+  verifyEmail,
+  AuthError,
+} from '../controllers/authController';
 import { getGoogleAuthUrl, handleGoogleCallback } from '../controllers/googleAuthController';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
 import { config } from '../config/env';
@@ -18,7 +27,7 @@ function handleAuthError(err: unknown, res: Response, fallbackMsg: string) {
   // Unexpected error — treat as service unavailable (connection failure, etc.)
   console.error(`[Auth] ${fallbackMsg}:`, err instanceof Error ? err.message : err);
   res.status(503).json({
-    error: 'Service temporarily unavailable. Please try again in a moment.',
+    error: 'Unable to connect. Please check your connection and try again.',
   });
 }
 
@@ -80,6 +89,93 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
     res.status(200).json(user);
   } catch (err: unknown) {
     handleAuthError(err, res, 'getMe unexpected error');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/forgot-password  (public)
+// ---------------------------------------------------------------------------
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  const { email } = req.body as { email?: string };
+
+  if (!email?.trim()) {
+    res.status(400).json({ error: 'Email is required' });
+    return;
+  }
+
+  try {
+    await forgotPassword(email);
+    // Always respond 200 to prevent email enumeration.
+    res.status(200).json({ message: 'If an account with that email exists, a reset link has been sent.' });
+  } catch (err: unknown) {
+    handleAuthError(err, res, 'forgotPassword unexpected error');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/reset-password  (public — token from email)
+// ---------------------------------------------------------------------------
+router.post('/reset-password', async (req: Request, res: Response) => {
+  const { token, password } = req.body as { token?: string; password?: string };
+
+  if (!token?.trim() || !password) {
+    res.status(400).json({ error: 'Token and new password are required' });
+    return;
+  }
+
+  if (password.length < 6) {
+    res.status(400).json({ error: 'Password must be at least 6 characters' });
+    return;
+  }
+
+  try {
+    await resetPassword(token, password);
+    res.status(200).json({ message: 'Password has been reset successfully. You can now sign in.' });
+  } catch (err: unknown) {
+    if (!(err instanceof AuthError)) {
+      console.error('[Auth] resetPassword failed:', err instanceof Error ? err.message : err);
+    }
+    handleAuthError(err, res, 'resetPassword unexpected error');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/send-verification-email  (protected)
+// ---------------------------------------------------------------------------
+router.post('/send-verification-email', authMiddleware, async (req: AuthRequest, res: Response) => {
+  if (!req.userId) {
+    res.status(401).json({ error: 'Not authenticated', code: 'NO_TOKEN' });
+    return;
+  }
+
+  try {
+    await sendVerificationEmailForUser(req.userId);
+    res.status(200).json({ message: 'Verification email sent. Please check your inbox.' });
+  } catch (err: unknown) {
+    if (!(err instanceof AuthError)) {
+      console.error('[Auth] sendVerificationEmail failed:', err instanceof Error ? err.message : err);
+    }
+    handleAuthError(err, res, 'sendVerificationEmail unexpected error');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /auth/verify-email  (public — linked from email, redirects to frontend)
+// ---------------------------------------------------------------------------
+router.get('/verify-email', async (req: Request, res: Response) => {
+  const { token } = req.query as { token?: string };
+
+  if (!token?.trim()) {
+    res.redirect(`${config.clientUrl}/settings?verified=error&reason=missing_token`);
+    return;
+  }
+
+  try {
+    await verifyEmail(token);
+    res.redirect(`${config.clientUrl}/settings?verified=success`);
+  } catch (err: unknown) {
+    const code = err instanceof AuthError ? err.code : 'unknown';
+    res.redirect(`${config.clientUrl}/settings?verified=error&reason=${code}`);
   }
 });
 

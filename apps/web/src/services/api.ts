@@ -66,6 +66,9 @@ export class ApiClient {
       return response.json();
     } catch (error) {
       clearTimeout(timeout);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timed out. Please check your connection and try again.');
+      }
       const message =
         error instanceof Error ? error.message : 'API request failed';
       throw new Error(message);
@@ -76,7 +79,8 @@ export class ApiClient {
   static register(email: string, password: string) {
     return this.request<{ token: string; user: {
       id: string; _id: string; email: string; name: string | null;
-      avatarUrl: string | null; authProvider: string; plan: string; subscriptionStatus: string | null;
+      avatarUrl: string | null; authProvider: string; plan: string;
+      subscriptionStatus: string | null; emailVerified: boolean;
     } }>(
       '/auth/register',
       {
@@ -89,7 +93,8 @@ export class ApiClient {
   static login(email: string, password: string) {
     return this.request<{ token: string; user: {
       id: string; _id: string; email: string; name: string | null;
-      avatarUrl: string | null; authProvider: string; plan: string; subscriptionStatus: string | null;
+      avatarUrl: string | null; authProvider: string; plan: string;
+      subscriptionStatus: string | null; emailVerified: boolean;
     } }>(
       '/auth/login',
       {
@@ -102,11 +107,32 @@ export class ApiClient {
   static getMe() {
     return this.request<{
       id: string; _id: string; email: string; name?: string | null;
-      avatarUrl?: string | null; authProvider?: string; plan?: string; subscriptionStatus?: string | null;
+      avatarUrl?: string | null; authProvider?: string; plan?: string;
+      subscriptionStatus?: string | null; emailVerified?: boolean;
     }>('/auth/me').catch(() => {
       if (typeof window === 'undefined') return { id: '', _id: '', email: '' } as any;
       const me = JSON.parse(localStorage.getItem('md:me') || 'null');
       return me || { id: '', _id: '', email: '' };
+    });
+  }
+
+  static forgotPassword(email: string) {
+    return this.request<{ message: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  static resetPassword(token: string, password: string) {
+    return this.request<{ message: string }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  }
+
+  static sendVerificationEmail() {
+    return this.request<{ message: string }>('/auth/send-verification-email', {
+      method: 'POST',
     });
   }
 

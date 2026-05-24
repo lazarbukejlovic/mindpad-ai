@@ -5,6 +5,7 @@ dotenv.config();
 export const config = {
   port: parseInt(process.env.PORT || '4000', 10),
   clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+  apiUrl: process.env.API_URL || 'http://localhost:4000/api',
   mongodbUri: process.env.MONGODB_URI || '',
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-key-change-in-production',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
@@ -15,4 +16,6 @@ export const config = {
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/api/auth/google/callback',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  emailFrom: process.env.EMAIL_FROM || 'MindPad AI <noreply@mindpad.ai>',
 };

@@ -2,10 +2,11 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck, CreditCard, Zap, Users, CheckCircle2, Lock, ChevronRight } from 'lucide-react';
+import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck, CreditCard, Zap, Users, CheckCircle2, Lock, ChevronRight, MailCheck } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { getToken, removeToken } from '@/lib/auth';
+import VerificationBanner from '@/components/ui/VerificationBanner';
 import { BillingStatus } from '@/types/index';
 import AppNav from '@/components/layout/AppNav';
 import Button from '@/components/ui/Button';
@@ -66,6 +67,8 @@ function SettingsContent() {
   const [name, setName]                         = useState('');
   const [avatarUrl, setAvatarUrl]               = useState('');
   const [authProvider, setAuthProvider]         = useState('');
+  const [emailVerified, setEmailVerified]       = useState<boolean | null>(null);
+  const [verifyMsg, setVerifyMsg]               = useState('');
   const [loading, setLoading]                   = useState(true);
   const [exportMsg, setExportMsg]               = useState('');
   const [defaultDuration, setDefaultDuration]   = useState('25');
@@ -84,6 +87,7 @@ function SettingsContent() {
         if (d.name) setName(d.name);
         if (d.avatarUrl) setAvatarUrl(d.avatarUrl);
         if (d.authProvider) setAuthProvider(d.authProvider);
+        setEmailVerified(d.emailVerified ?? false);
         try { localStorage.setItem('md:me', JSON.stringify({ email: d.email, name: d.name, avatarUrl: d.avatarUrl })); } catch {}
       })
       .catch(() => {
@@ -105,6 +109,14 @@ function SettingsContent() {
     const billingParam = searchParams.get('billing');
     if (billingParam === 'success') setBillingMsg('Your plan has been upgraded successfully.');
     if (billingParam === 'canceled') setBillingMsg('');
+
+    const verifiedParam = searchParams.get('verified');
+    if (verifiedParam === 'success') {
+      setEmailVerified(true);
+      setVerifyMsg('Your email has been verified successfully.');
+    } else if (verifiedParam === 'error') {
+      setVerifyMsg('Verification link is invalid or has expired. Please request a new one below.');
+    }
   }, [router, searchParams]);
 
   function handleExport() {
@@ -170,6 +182,11 @@ function SettingsContent() {
       <div className="md:pl-60" style={{ position: 'relative', zIndex: 1 }}>
         <div className="pt-14 md:pt-0">
           <div className="max-w-2xl mx-auto px-4 md:px-8 py-8">
+
+            {/* ── Verification banner ── */}
+            {email && emailVerified === false && authProvider !== 'google' && (
+              <VerificationBanner email={email} authProvider={authProvider} emailVerified={emailVerified} />
+            )}
 
             {/* ── Header ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 32 }}>
@@ -252,7 +269,31 @@ function SettingsContent() {
                         Google connected
                       </span>
                     )}
+                    {emailVerified === true && authProvider !== 'google' && (
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        fontSize: 11, fontWeight: 600,
+                        padding: '3px 8px', borderRadius: 99,
+                        background: 'rgba(34,197,94,0.08)',
+                        border: '1px solid rgba(34,197,94,0.2)',
+                        color: 'rgba(100,220,140,0.9)',
+                      }}>
+                        <MailCheck size={10} />
+                        Email verified
+                      </span>
+                    )}
                   </div>
+                  {/* Verify message from redirect */}
+                  {verifyMsg && (
+                    <div style={{
+                      marginTop: 10, padding: '8px 12px', borderRadius: 8, fontSize: 12,
+                      background: verifyMsg.includes('successfully') ? 'rgba(34,197,94,0.08)' : 'rgba(220,38,38,0.08)',
+                      border: `1px solid ${verifyMsg.includes('successfully') ? 'rgba(34,197,94,0.2)' : 'rgba(220,38,38,0.2)'}`,
+                      color: verifyMsg.includes('successfully') ? 'rgba(100,220,140,0.9)' : '#fca5a5',
+                    }}>
+                      {verifyMsg}
+                    </div>
+                  )}
                 </div>
               </div>
             </SettingsCard>

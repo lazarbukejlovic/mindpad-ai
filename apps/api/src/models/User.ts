@@ -16,6 +16,11 @@ export interface IUser extends Document {
   cancelAtPeriodEnd?: boolean;
   dailyExtractionsUsed?: number;
   dailyExtractionsUsedDate?: Date;
+  emailVerified?: boolean;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
   createdAt: Date;
   comparePassword(password: string): Promise<boolean>;
 }
@@ -59,6 +64,14 @@ const userSchema = new Schema<IUser>(
       default: 0,
     },
     dailyExtractionsUsedDate: Date,
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationToken: String,
+    emailVerificationExpires: Date,
+    passwordResetToken: String,
+    passwordResetExpires: Date,
   },
   {
     timestamps: true,

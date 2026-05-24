@@ -35,9 +35,9 @@ export default function LoginPage() {
       ) {
         setError('Invalid email or password.');
       } else if (msg.includes('Google sign-in') || msg.includes('GOOGLE_ACCOUNT')) {
-        setError(msg); // show the helpful backend message directly
-      } else if (msg.includes('temporarily unavailable')) {
-        setError('Service temporarily unavailable. Please try again in a moment.');
+        setError(msg);
+      } else if (msg.includes('timed out') || msg.includes('Unable to connect') || msg.includes('temporarily unavailable')) {
+        setError('Unable to connect. Please check your connection and try again.');
       } else {
         setError(msg || 'Login failed. Please try again.');
       }
@@ -251,11 +251,20 @@ export default function LoginPage() {
                 />
               </div>
               <div>
-                <label style={{
-                  display: 'block', fontSize: 11, fontWeight: 700,
-                  letterSpacing: '0.09em', color: 'rgba(60,100,150,0.9)',
-                  textTransform: 'uppercase', marginBottom: 9,
-                }}>Password</label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                  <label style={{
+                    fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.09em', color: 'rgba(60,100,150,0.9)',
+                    textTransform: 'uppercase',
+                  }}>Password</label>
+                  <Link href="/forgot-password" style={{
+                    fontSize: 11, fontWeight: 600, color: '#40b8ff', textDecoration: 'none',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                    onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
+                    Forgot password?
+                  </Link>
+                </div>
                 <input
                   type="password" value={password}
                   onChange={e => setPassword(e.target.value)}

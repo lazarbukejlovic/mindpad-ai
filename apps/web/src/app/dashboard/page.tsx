@@ -14,6 +14,7 @@ import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief } from '@/ty
 import { buildWorkspaceContext } from '@/lib/aiContext';
 import AppNav from '@/components/layout/AppNav';
 import KPICard from '@/components/ui/KPICard';
+import VerificationBanner from '@/components/ui/VerificationBanner';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
@@ -78,6 +79,8 @@ export default function DashboardPage() {
   const [analytics, setAnalytics]       = useState<AnalyticsSummary | null>(null);
   const [brainDumps, setBrainDumps]     = useState<BrainDump[]>([]);
   const [userEmail, setUserEmail]       = useState('');
+  const [authProvider, setAuthProvider] = useState('');
+  const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   const [error, setError]               = useState('');
 
   // AI status
@@ -124,6 +127,8 @@ export default function DashboardPage() {
       setAnalytics(analyticsData);
       setBrainDumps((brainDumpsData as BrainDump[]).slice(0, 3));
       setUserEmail(meData.email);
+      if (meData.authProvider) setAuthProvider(meData.authProvider);
+      setEmailVerified(meData.emailVerified ?? false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
@@ -202,6 +207,10 @@ export default function DashboardPage() {
               <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 12, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)', color: '#fca5a5', fontSize: 13 }}>
                 {error}
               </div>
+            )}
+
+            {userEmail && emailVerified === false && authProvider !== 'google' && (
+              <VerificationBanner email={userEmail} authProvider={authProvider} emailVerified={emailVerified} />
             )}
 
             {/* ── Header ── */}
