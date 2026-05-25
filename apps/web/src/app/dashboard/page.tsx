@@ -158,6 +158,14 @@ export default function DashboardPage() {
       if (googleToken) {
         saveToken(googleToken);
         try { window.history.replaceState(null, '', '/dashboard'); } catch {}
+        // If a team invite was pending before Google OAuth, redirect back to it.
+        try {
+          const pendingToken = localStorage.getItem('pending_team_invite_token');
+          if (pendingToken) {
+            window.location.replace(`/team/invite?token=${pendingToken}`);
+            return;
+          }
+        } catch {}
       }
     }
   }, []);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Brain, AlertCircle, ArrowRight } from 'lucide-react';
@@ -16,6 +16,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
+  const [returnUrl, setReturnUrl] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const url = params.get('returnUrl') || '';
+    // Only allow internal paths to prevent open redirect
+    if (url.startsWith('/')) setReturnUrl(url);
+  }, []);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -25,7 +33,7 @@ export default function LoginPage() {
       const result = await ApiClient.login(email, password);
       saveToken(result.token);
       try { localStorage.setItem('md:me', JSON.stringify(result.user)); } catch {}
-      router.push('/dashboard');
+      router.push(returnUrl || '/dashboard');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (

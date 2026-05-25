@@ -35,17 +35,8 @@ app.get('/api/health', (_req: express.Request, res: Response) => {
 });
 
 app.use('/api/auth', authRoutes);
-app.use('/api/brain-dumps', authMiddleware, brainDumpRoutes);
-app.use('/api/tasks', authMiddleware, taskRoutes);
-app.use('/api/focus-sessions', authMiddleware, focusRoutes);
-app.use('/api/analytics', authMiddleware, analyticsRoutes);
-app.use('/api/billing', authMiddleware, billingRoutes);
-app.use('/api/team', authMiddleware, teamRoutes);
-app.use('/api/execution-plans', authMiddleware, executionPlanRoutes);
-app.use('/api/reports', authMiddleware, reportsRoutes);
-app.use('/api/onboarding', authMiddleware, onboardingRoutes);
 
-// Public invite preview — no auth required to view invite details
+// Public invite preview — must be registered BEFORE authMiddleware covers /api/team
 app.get('/api/team/invite/preview', async (req: express.Request, res: Response) => {
   const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
   if (!token) { res.status(400).json({ error: 'Token is required' }); return; }
@@ -55,6 +46,16 @@ app.get('/api/team/invite/preview', async (req: express.Request, res: Response) 
     res.status(500).json({ error: 'Failed to preview invite' });
   }
 });
+
+app.use('/api/brain-dumps', authMiddleware, brainDumpRoutes);
+app.use('/api/tasks', authMiddleware, taskRoutes);
+app.use('/api/focus-sessions', authMiddleware, focusRoutes);
+app.use('/api/analytics', authMiddleware, analyticsRoutes);
+app.use('/api/billing', authMiddleware, billingRoutes);
+app.use('/api/team', authMiddleware, teamRoutes);
+app.use('/api/execution-plans', authMiddleware, executionPlanRoutes);
+app.use('/api/reports', authMiddleware, reportsRoutes);
+app.use('/api/onboarding', authMiddleware, onboardingRoutes);
 
 // Public AI status — registered before authMiddleware covers /api/ai
 app.get('/api/ai/status', async (_req: express.Request, res: Response) => {

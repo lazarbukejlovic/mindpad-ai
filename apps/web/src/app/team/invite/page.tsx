@@ -3,17 +3,19 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Loader2 } from 'lucide-react';
+import { Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Loader2, RefreshCw } from 'lucide-react';
 import { ApiClient } from '@/services/api';
 import { getToken, getUser } from '@/lib/auth';
 import { TeamRole } from '@/types/index';
 import NeuralBackground from '@/components/ui/NeuralBackground';
 import Button from '@/components/ui/Button';
 
+const PENDING_INVITE_KEY = 'pending_team_invite_token';
 const ROLE_LABELS: Record<TeamRole, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' };
 
 type InviteState =
   | { status: 'loading' }
+  | { status: 'network-error' }
   | { status: 'invalid' | 'expired' | 'revoked' | 'accepted' }
   | {
       status: 'valid';
@@ -34,18 +36,33 @@ function InviteContent() {
   const [accepted, setAccepted] = useState(false);
 
   const rawToken = searchParams.get('token') || '';
-  const currentUser = typeof window !== 'undefined' ? getUser() : null;
-  const isLoggedIn = !!getToken();
 
-  useEffect(() => {
+  // Derive auth state at render time — safe because getToken/getUser guard window internally.
+  // Re-derived on every render triggered by setInvite, so by the time 'valid' UI shows,
+  // these values reflect the real client-side localStorage state.
+  const isLoggedIn = !!getToken();
+  const currentUser = typeof window !== 'undefined' ? getUser() : null;
+
+  function loadInvite() {
     if (!rawToken) {
       setInvite({ status: 'invalid' });
       return;
     }
 
+    // Persist token so Google OAuth redirect loop can recover it.
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(PENDING_INVITE_KEY, rawToken); } catch {}
+    }
+
+    setInvite({ status: 'loading' });
+
+    const timeout = setTimeout(() => setInvite({ status: 'network-error' }), 8000);
+
     ApiClient.previewTeamInvite(rawToken)
       .then(res => {
-        if (res.status === 'valid') {
+        clearTimeout(timeout);
+        const s = res?.status;
+        if (s === 'valid') {
           setInvite({
             status: 'valid',
             workspaceName: res.workspaceName!,
@@ -55,13 +72,21 @@ function InviteContent() {
             expiresAt: res.expiresAt!,
             rawToken,
           });
+        } else if (s === 'expired' || s === 'revoked' || s === 'accepted' || s === 'invalid') {
+          setInvite({ status: s });
         } else {
-          setInvite({ status: res.status });
+          // Unexpected response (e.g. auth error forwarded as JSON without a status field)
+          setInvite({ status: 'network-error' });
         }
       })
-      .catch(() => setInvite({ status: 'invalid' }));
+      .catch(() => {
+        clearTimeout(timeout);
+        setInvite({ status: 'network-error' });
+      });
+  }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawToken]);
+  useEffect(() => { loadInvite(); }, [rawToken]);
 
   async function handleAccept() {
     if (invite.status !== 'valid') return;
@@ -69,6 +94,10 @@ function InviteContent() {
     setAcceptError('');
     try {
       await ApiClient.acceptTeamInvite(invite.rawToken);
+      // Clean up localStorage token on success
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem(PENDING_INVITE_KEY); } catch {}
+      }
       setAccepted(true);
       setTimeout(() => router.push('/team'), 2000);
     } catch (err) {
@@ -116,6 +145,37 @@ function InviteContent() {
           <p style={{ fontSize: 14, color: 'rgba(90,120,160,0.75)', marginBottom: 20 }}>
             Redirecting you to the workspace…
           </p>
+        </div>
+      );
+    }
+
+    if (invite.status === 'network-error') {
+      return (
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 60, height: 60, borderRadius: '50%', margin: '0 auto 20px',
+            background: 'rgba(255,120,0,0.08)', border: '1px solid rgba(255,120,0,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <AlertCircle size={26} style={{ color: '#f97316' }} />
+          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: 'rgba(180,210,240,0.9)', marginBottom: 10 }}>
+            Connection error
+          </h2>
+          <p style={{ fontSize: 14, color: 'rgba(90,120,160,0.7)', marginBottom: 24 }}>
+            Could not load the invite. Check your connection and try again.
+          </p>
+          <button
+            onClick={loadInvite}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '11px 22px', borderRadius: 10, fontSize: 14, fontWeight: 700,
+              background: 'rgba(0,100,200,0.1)', border: '1px solid rgba(0,160,255,0.2)',
+              color: '#40b8ff', cursor: 'pointer',
+            }}
+          >
+            <RefreshCw size={15} /> Try again
+          </button>
         </div>
       );
     }
@@ -216,14 +276,15 @@ function InviteContent() {
       );
     }
 
-    // Valid invite (TypeScript narrowed — all other statuses returned above)
+    // Valid invite — all other statuses returned above, TypeScript narrowed to 'valid'
     if (invite.status !== 'valid') return null;
     const { workspaceName, inviterName, invitedEmail, role } = invite;
-    const loggedInEmail = (currentUser as any)?.email?.toLowerCase();
+    const loggedInEmail = (currentUser as { email?: string } | null)?.email?.toLowerCase();
     const inviteEmail = invitedEmail?.toLowerCase();
     const emailMismatch = isLoggedIn && loggedInEmail && inviteEmail && loggedInEmail !== inviteEmail;
-    const loginUrl = `/login?returnUrl=${encodeURIComponent(`/team/invite?token=${rawToken}`)}`;
-    const registerUrl = `/register?returnUrl=${encodeURIComponent(`/team/invite?token=${rawToken}`)}`;
+    const returnParam = encodeURIComponent(`/team/invite?token=${rawToken}`);
+    const loginUrl = `/login?returnUrl=${returnParam}`;
+    const registerUrl = `/register?returnUrl=${returnParam}`;
 
     return (
       <>
@@ -241,7 +302,7 @@ function InviteContent() {
             fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em',
             color: 'rgba(210,230,255,0.95)', marginBottom: 8,
           }}>
-            You're invited to join
+            You&apos;re invited to join
           </h1>
           <p style={{
             fontSize: 20, fontWeight: 700, color: '#a78bfa', marginBottom: 4,
@@ -269,7 +330,7 @@ function InviteContent() {
           }}>
             <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0, marginTop: 1 }} />
             <p style={{ fontSize: 13, color: 'rgba(255,160,160,0.9)', margin: 0 }}>
-              You're logged in as <strong>{loggedInEmail}</strong>, but this invite was sent to <strong>{inviteEmail}</strong>.
+              You&apos;re logged in as <strong>{loggedInEmail}</strong>, but this invite was sent to <strong>{inviteEmail}</strong>.
               Please log in with the correct account.
             </p>
           </div>
@@ -304,7 +365,7 @@ function InviteContent() {
               background: 'rgba(0,100,200,0.08)', border: '1px solid rgba(0,160,255,0.2)',
               color: '#40b8ff', textDecoration: 'none',
             }}>
-              Create account & accept
+              Create account &amp; accept
             </Link>
           </div>
         ) : emailMismatch ? (
