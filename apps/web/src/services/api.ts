@@ -684,18 +684,68 @@ export class ApiClient {
     });
   }
 
-  static inviteTeamMember(email: string) {
-    return this.request<{ invitedEmails: string[] }>('/team/invite', {
+  static createTeamInvite(email: string, role: import('@/types/index').TeamRole) {
+    return this.request<{
+      inviteId: string;
+      inviteUrl: string;
+      invitedEmail: string;
+      role: import('@/types/index').TeamRole;
+      expiresAt: string;
+    }>('/team/invite', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, role }),
     });
   }
 
-  static removeTeamInvite(email: string) {
-    return this.request<{ invitedEmails: string[] }>('/team/invite', {
+  static revokeTeamInvite(inviteId: string) {
+    return this.request<{ ok: boolean }>(`/team/invite/${inviteId}`, {
       method: 'DELETE',
-      body: JSON.stringify({ email }),
     });
+  }
+
+  static regenerateTeamInvite(inviteId: string) {
+    return this.request<{
+      inviteId: string;
+      inviteUrl: string;
+      invitedEmail: string;
+      role: import('@/types/index').TeamRole;
+      expiresAt: string;
+    }>(`/team/invite/${inviteId}/regenerate`, { method: 'POST' });
+  }
+
+  // Public — no auth token sent
+  static previewTeamInvite(rawToken: string) {
+    const url = `${API_URL}/team/invite/preview?token=${encodeURIComponent(rawToken)}`;
+    return fetch(url).then(r => r.json()) as Promise<{
+      status: 'valid' | 'invalid' | 'expired' | 'revoked' | 'accepted';
+      inviteId?: string;
+      workspaceName?: string;
+      inviterName?: string;
+      invitedEmail?: string;
+      role?: import('@/types/index').TeamRole;
+      expiresAt?: string;
+    }>;
+  }
+
+  static acceptTeamInvite(rawToken: string) {
+    return this.request<{ ok: boolean; workspaceName: string }>('/team/invite/accept', {
+      method: 'POST',
+      body: JSON.stringify({ token: rawToken }),
+    });
+  }
+
+  static updateTeamMemberRole(targetUserId: string, role: import('@/types/index').TeamRole) {
+    return this.request<import('@/types/index').TeamWorkspace>(
+      `/team/members/${targetUserId}/role`,
+      { method: 'PATCH', body: JSON.stringify({ role }) },
+    );
+  }
+
+  static removeTeamMember(targetUserId: string) {
+    return this.request<import('@/types/index').TeamWorkspace>(
+      `/team/members/${targetUserId}`,
+      { method: 'DELETE' },
+    );
   }
 
   // Execution Plans

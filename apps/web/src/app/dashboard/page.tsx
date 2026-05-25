@@ -6,12 +6,12 @@ import Link from 'next/link';
 import {
   ListTodo, CheckCircle2, CalendarDays, Clock,
   Sparkles, Brain, Timer, ArrowRight, Flame, Zap,
-  Send, MessageSquare, ChevronRight,
+  Send, MessageSquare, ChevronRight, Users,
 } from 'lucide-react';
 import { ApiClient } from '@/services/api';
 import { saveToken } from '@/lib/auth';
 import { useSessionRestore } from '@/hooks/useSessionRestore';
-import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief, OnboardingStatus } from '@/types/index';
+import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief, OnboardingStatus, TeamWorkspaceState } from '@/types/index';
 import { buildWorkspaceContext } from '@/lib/aiContext';
 import AppNav from '@/components/layout/AppNav';
 import KPICard from '@/components/ui/KPICard';
@@ -147,6 +147,9 @@ export default function DashboardPage() {
   const [askLoading, setAskLoading]     = useState(false);
   const [askError, setAskError]         = useState('');
 
+  // Team card (non-blocking, best-effort)
+  const [teamState, setTeamState]       = useState<TeamWorkspaceState | null>(null);
+
   // Capture Google OAuth token synchronously before useSessionRestore's useEffect fires.
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -171,11 +174,13 @@ export default function DashboardPage() {
         setOnboarding(s);
         loadDashboard();
         ApiClient.getAIStatus().then(st => setAiMode(st.mode)).catch(() => setAiMode('offline'));
+        ApiClient.getTeamWorkspace().then(ts => { if (ts.exists) setTeamState(ts); }).catch(() => {});
       })
       .catch(() => {
         // If onboarding status unavailable, proceed to dashboard anyway.
         loadDashboard();
         ApiClient.getAIStatus().then(st => setAiMode(st.mode)).catch(() => setAiMode('offline'));
+        ApiClient.getTeamWorkspace().then(ts => { if (ts.exists) setTeamState(ts); }).catch(() => {});
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checking]);
@@ -710,6 +715,51 @@ export default function DashboardPage() {
                             width: `${Math.round((analytics.completedTasks / analytics.totalTasks) * 100)}%`,
                             transition: 'width 0.7s ease',
                           }} />
+                        </div>
+                      </PanelCard>
+                    )}
+
+                    {/* Team card — shown only when workspace exists */}
+                    {teamState?.workspace && (
+                      <PanelCard
+                        title="Team Workspace"
+                        action={
+                          <Link href="/team" style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
+                            Open <ArrowRight size={10} />
+                          </Link>
+                        }
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{
+                              width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                              background: 'rgba(120,80,200,0.12)', border: '1px solid rgba(150,100,240,0.2)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <Users size={15} style={{ color: '#a78bfa' }} />
+                            </div>
+                            <div>
+                              <p style={{ fontSize: 13, fontWeight: 700, color: 'rgba(200,220,245,0.95)' }}>{teamState.workspace.name}</p>
+                              <p style={{ fontSize: 11, color: 'rgba(90,120,160,0.7)' }}>
+                                {teamState.workspace.memberCount} member{teamState.workspace.memberCount !== 1 ? 's' : ''}
+                                {(teamState.workspace.pendingInvites?.length ?? 0) > 0 && (
+                                  <span style={{ color: '#40b8ff', marginLeft: 6 }}>
+                                    · {teamState.workspace.pendingInvites.length} pending
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          {teamState.workspace.activityFeed?.[0] && (
+                            <div style={{
+                              padding: '8px 10px', borderRadius: 8,
+                              background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(0,160,255,0.07)',
+                              fontSize: 11, color: 'rgba(110,150,200,0.75)',
+                              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                            }}>
+                              {teamState.workspace.activityFeed[0].action}
+                            </div>
+                          )}
                         </div>
                       </PanelCard>
                     )}

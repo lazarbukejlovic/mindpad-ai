@@ -235,6 +235,74 @@ Run through this checklist before every production release. Each item must pass 
 - [ ] Free plan extraction limit is still enforced during onboarding
 - [ ] Pro/Team features still gated correctly
 
+---
+
+## Team Workspace (Phase 3)
+
+### Plan limits
+- [ ] Free plan user: /team shows "Create workspace" (no invite form — at member limit of 1)
+- [ ] Pro plan user: can create workspace and invite up to 2 members (3 total slots)
+- [ ] Team plan user: can invite up to 9 members (10 total slots)
+- [ ] Hitting the member limit shows a clear upgrade prompt with link to /pricing
+- [ ] Team weekly report is gated behind Team plan (Pro users see upgrade prompt)
+
+### Create & manage workspace
+- [ ] Any plan can create a workspace on /team
+- [ ] Creating workspace shows it immediately without page reload
+- [ ] Rename workspace updates name in header and activity feed
+- [ ] Settings > Team Workspace card: shows workspace name + member count when workspace exists
+- [ ] Settings > Team Workspace card: shows "Set up workspace" CTA when no workspace
+- [ ] Dashboard: compact Team card appears when workspace exists (name, member count, activity snippet)
+
+### Invites (secure token flow)
+- [ ] Owner fills in email + role (Member/Admin) → clicks Invite
+- [ ] Invite link is shown ONCE immediately below the form in a highlighted box with Copy button
+- [ ] Invite link does NOT appear again after dismissal (raw token never stored or re-shown)
+- [ ] Pending invite appears in the "Pending Invitations" section (no link, just email + role + expiry)
+- [ ] "New link" button on a pending invite generates a new link (old invite is revoked)
+- [ ] Revoke (trash icon) removes the invite from the pending list
+- [ ] Invite email is sent if RESEND_API_KEY is configured (non-blocking — does not fail the invite if email fails)
+- [ ] Duplicate invite for same email is rejected with a clear error message
+- [ ] Inviting an existing member's email is rejected with a clear error
+
+### /team/invite accept page
+- [ ] Valid invite with ?token=xxx: shows workspace name, inviter name, email, role
+- [ ] Logged-out user: shows "Log in to accept" and "Create account & accept" buttons
+- [ ] Logged-in, email matches: shows "Accept Invitation" button
+- [ ] Logged-in, email mismatch: shows warning and "Log in as [invite email]" button
+- [ ] Clicking Accept: adds user to workspace, redirects to /team after 2s
+- [ ] Expired token: shows "Invitation expired" state
+- [ ] Revoked token: shows "Invitation revoked" state
+- [ ] Invalid/unknown token: shows "Invalid invite link" state
+- [ ] Already accepted token: shows "Already accepted" state
+
+### Member management
+- [ ] Owner sees role dropdown (Member/Admin) and remove button for each non-owner member
+- [ ] Changing a member's role via dropdown updates it immediately
+- [ ] Removing a member removes them from the list immediately
+- [ ] Owner cannot remove themselves
+- [ ] Owner's row shows "Owner" badge with no management controls
+
+### Activity feed
+- [ ] Activity feed shows actor name (not raw userId)
+- [ ] Invite, accept, rename, remove events all appear in the feed
+- [ ] Feed shows newest-first (max 20 entries displayed)
+
+### Shared projects (regression)
+- [ ] Add shared project still works
+- [ ] Delete shared project still works
+
+### Regression (must still pass after Phase 3)
+- [ ] Stripe checkout and billing still work
+- [ ] Google login still works end-to-end
+- [ ] Password reset still works
+- [ ] Email verification still works
+- [ ] Persistent login still works across browser close/reopen
+- [ ] Onboarding flow still works for new users
+- [ ] All existing AI features (brain dump, focus, brief, analytics) still work
+
+---
+
 ## Build verification (run before every release)
 
 ```bash

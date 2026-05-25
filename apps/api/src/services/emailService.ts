@@ -126,3 +126,69 @@ export async function sendEmailVerification(toEmail: string, rawToken: string): 
     throw new Error('Failed to send verification email');
   }
 }
+
+export async function sendTeamInviteEmail(
+  toEmail: string,
+  inviterName: string,
+  workspaceName: string,
+  role: string,
+  inviteUrl: string,
+): Promise<void> {
+  const client = getResend();
+  if (!client) {
+    console.warn('[Email] RESEND_API_KEY not configured — skipping team invite email');
+    return;
+  }
+
+  const roleLabel = role === 'admin' ? 'Admin' : 'Member';
+
+  const { error } = await client.emails.send({
+    from: config.emailFrom,
+    to: toEmail,
+    subject: `${inviterName} invited you to join ${workspaceName} on MindPad AI`,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#030609;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#030609;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+        <tr><td style="padding-bottom:28px;text-align:center;">
+          <span style="font-size:22px;font-weight:800;color:#d8eeff;letter-spacing:-0.03em;">MindPad</span>
+          <span style="font-size:10px;font-weight:700;color:#40b8ff;background:rgba(0,160,255,0.12);border:1px solid rgba(0,160,255,0.28);border-radius:99px;padding:3px 9px;margin-left:8px;letter-spacing:0.1em;">AI</span>
+        </td></tr>
+        <tr><td style="background:rgba(5,10,22,0.95);border:1px solid rgba(0,160,255,0.15);border-radius:20px;padding:40px 36px;">
+          <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#d8eeff;">You've been invited</h1>
+          <p style="margin:0 0 24px;font-size:14px;color:rgba(140,170,210,0.85);line-height:1.6;">
+            <strong style="color:#d8eeff;">${inviterName}</strong> has invited you to join the
+            <strong style="color:#d8eeff;">${workspaceName}</strong> workspace on MindPad AI as
+            <strong style="color:#a78bfa;">${roleLabel}</strong>.
+          </p>
+          <table cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
+            <tr><td style="border-radius:12px;background:linear-gradient(135deg,#7c3aed,#5b21b6);">
+              <a href="${inviteUrl}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#fff;text-decoration:none;border-radius:12px;">
+                Accept Invitation
+              </a>
+            </td></tr>
+          </table>
+          <p style="margin:0 0 8px;font-size:12px;color:rgba(90,120,160,0.75);">Or copy this link into your browser:</p>
+          <p style="margin:0 0 24px;font-size:12px;color:#40b8ff;word-break:break-all;">${inviteUrl}</p>
+          <p style="margin:0;font-size:12px;color:rgba(70,100,140,0.65);line-height:1.6;">
+            This invitation expires in 7 days. If you did not expect this invite, you can safely ignore this email.
+          </p>
+        </td></tr>
+        <tr><td style="padding-top:20px;text-align:center;">
+          <p style="margin:0;font-size:11px;color:rgba(50,80,120,0.6);">MindPad AI &mdash; Your AI productivity workspace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  });
+
+  if (error) {
+    console.error('[Email] Failed to send team invite email:', error.message);
+  }
+}

@@ -16,6 +16,7 @@ import executionPlanRoutes from './routes/executionPlanRoutes';
 import reportsRoutes from './routes/reportsRoutes';
 import onboardingRoutes from './routes/onboardingRoutes';
 import { getAIStatus } from './services/aiService';
+import { previewInvite } from './controllers/teamController';
 
 const app = express();
 
@@ -43,6 +44,17 @@ app.use('/api/team', authMiddleware, teamRoutes);
 app.use('/api/execution-plans', authMiddleware, executionPlanRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
 app.use('/api/onboarding', authMiddleware, onboardingRoutes);
+
+// Public invite preview — no auth required to view invite details
+app.get('/api/team/invite/preview', async (req: express.Request, res: Response) => {
+  const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  if (!token) { res.status(400).json({ error: 'Token is required' }); return; }
+  try {
+    res.json(await previewInvite(token));
+  } catch {
+    res.status(500).json({ error: 'Failed to preview invite' });
+  }
+});
 
 // Public AI status — registered before authMiddleware covers /api/ai
 app.get('/api/ai/status', async (_req: express.Request, res: Response) => {

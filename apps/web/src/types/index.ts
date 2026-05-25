@@ -149,6 +149,25 @@ export interface ExportSummary {
   markdown: string;
 }
 
+export type TeamRole = 'owner' | 'admin' | 'member';
+
+export interface TeamMember {
+  userId: string;
+  role: TeamRole;
+  joinedAt: string;
+  name?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
+}
+
+export interface TeamPendingInvite {
+  id: string;
+  invitedEmail: string;
+  role: TeamRole;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface SharedProject {
   id: string;
   name: string;
@@ -160,15 +179,18 @@ export interface ActivityEntry {
   id: string;
   action: string;
   actor: string;
+  actorName?: string;
   timestamp: string;
 }
 
 export interface TeamWorkspace {
   id: string;
   name: string;
-  invitedEmails: string[];
-  memberIds: string[];
+  ownerId: string;
+  members: TeamMember[];
+  pendingInvites: TeamPendingInvite[];
   memberCount: number;
+  maxMembers: number;
   sharedProjects: SharedProject[];
   activityFeed: ActivityEntry[];
   createdAt: string;
@@ -178,7 +200,7 @@ export interface TeamWorkspaceState {
   exists: boolean;
   plan: string;
   upgradeRequired: boolean;
-  entitlements?: PlanEntitlements;
+  entitlements: PlanEntitlements;
   workspace?: TeamWorkspace;
 }
 

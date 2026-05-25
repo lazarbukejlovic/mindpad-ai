@@ -3,12 +3,13 @@
 import { useEffect, useState, FormEvent } from 'react';
 import {
   Users, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Zap,
-  FolderKanban, Activity, BarChart2, Sparkles, Lock, RefreshCw, Shield,
+  FolderKanban, Activity, BarChart2, Sparkles, RefreshCw, Shield,
+  Copy, Check, ChevronDown, Link2, UserMinus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { useSessionRestore } from '@/hooks/useSessionRestore';
-import { TeamWorkspaceState, TeamWorkspace, TeamWeeklyReport, SharedProject, ActivityEntry } from '@/types/index';
+import { TeamWorkspaceState, TeamWorkspace, TeamWeeklyReport, SharedProject, ActivityEntry, TeamMember, TeamPendingInvite, TeamRole } from '@/types/index';
 import AppNav from '@/components/layout/AppNav';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -22,22 +23,99 @@ const panel: React.CSSProperties = {
   borderRadius: '1rem',
 };
 
+const ROLE_LABELS: Record<TeamRole, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' };
+const ROLE_COLORS: Record<TeamRole, string> = {
+  owner: '#a78bfa',
+  admin: '#40b8ff',
+  member: 'rgba(100,130,170,0.8)',
+};
+
+function RoleBadge({ role }: { role: TeamRole }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+      background: `${ROLE_COLORS[role]}18`,
+      border: `1px solid ${ROLE_COLORS[role]}40`,
+      color: ROLE_COLORS[role],
+      letterSpacing: '0.05em',
+    }}>{ROLE_LABELS[role]}</span>
+  );
+}
+
+function MemberAvatar({ member }: { member: TeamMember }) {
+  if (member.avatarUrl) {
+    return (
+      <img
+        src={member.avatarUrl} alt=""
+        style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      />
+    );
+  }
+  const initials = (member.name || member.email || '?').charAt(0).toUpperCase();
+  return (
+    <div style={{
+      width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+      background: 'rgba(100,80,200,0.15)', border: '1px solid rgba(150,100,240,0.25)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 13, fontWeight: 700, color: '#a78bfa',
+    }}>{initials}</div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  function doCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={doCopy}
+      title="Copy"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '5px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+        background: copied ? 'rgba(34,197,94,0.1)' : 'rgba(0,100,200,0.1)',
+        border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(0,160,255,0.2)'}`,
+        color: copied ? '#6ee7b7' : '#40b8ff',
+      }}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  );
+}
+
 export default function TeamPage() {
   const { checking } = useSessionRestore();
   const [state, setState]               = useState<TeamWorkspaceState | null>(null);
   const [loading, setLoading]           = useState(true);
   const [workspaceName, setWorkspaceName] = useState('');
   const [editingName, setEditingName]   = useState(false);
-  const [inviteEmail, setInviteEmail]   = useState('');
-  const [inviting, setInviting]         = useState(false);
   const [saving, setSaving]             = useState(false);
   const [msg, setMsg]                   = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Invite form
+  const [inviteEmail, setInviteEmail]   = useState('');
+  const [inviteRole, setInviteRole]     = useState<TeamRole>('member');
+  const [inviting, setInviting]         = useState(false);
+  // One-time invite link shown after creation
+  const [freshInviteUrl, setFreshInviteUrl] = useState<string | null>(null);
+  // Regenerated link
+  const [regenResult, setRegenResult]   = useState<{ inviteId: string; inviteUrl: string } | null>(null);
+  const [regenLoading, setRegenLoading] = useState<string | null>(null); // inviteId
 
   // Shared projects
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [addingProject, setAddingProject]   = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
+
+  // Member management
+  const [roleChangeTarget, setRoleChangeTarget] = useState<string | null>(null);
+  const [removingMember, setRemovingMember]     = useState<string | null>(null);
 
   // Weekly report
   const [report, setReport]             = useState<TeamWeeklyReport | null>(null);
@@ -59,6 +137,11 @@ export default function TeamPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function showMsg(type: 'success' | 'error', text: string) {
+    setMsg({ type, text });
+    setTimeout(() => setMsg(null), 5000);
   }
 
   async function handleCreate(e: FormEvent) {
@@ -92,24 +175,103 @@ export default function TeamPage() {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
     setInviting(true);
+    setFreshInviteUrl(null);
+    setRegenResult(null);
     try {
-      const res = await ApiClient.inviteTeamMember(inviteEmail.trim());
-      setState(prev => prev?.workspace ? { ...prev, workspace: { ...prev.workspace!, invitedEmails: res.invitedEmails, memberCount: res.invitedEmails.length + (prev.workspace?.memberIds.length ?? 0) + 1 } } : prev);
+      const res = await ApiClient.createTeamInvite(inviteEmail.trim(), inviteRole);
+      setFreshInviteUrl(res.inviteUrl);
       setInviteEmail('');
-      showMsg('success', 'Invitation sent.');
+      // Add pending invite to local state
+      setState(prev => {
+        if (!prev?.workspace) return prev;
+        const newInvite: TeamPendingInvite = {
+          id: res.inviteId,
+          invitedEmail: res.invitedEmail,
+          role: res.role,
+          expiresAt: res.expiresAt,
+          createdAt: new Date().toISOString(),
+        };
+        return {
+          ...prev,
+          workspace: {
+            ...prev.workspace!,
+            pendingInvites: [...(prev.workspace!.pendingInvites || []), newInvite],
+          },
+        };
+      });
+      showMsg('success', 'Invitation created. Share the link below.');
     } catch (err) {
       showMsg('error', err instanceof Error ? err.message : 'Failed to invite');
     } finally { setInviting(false); }
   }
 
-  async function handleRemoveInvite(email: string) {
+  async function handleRevokeInvite(inviteId: string) {
     try {
-      const res = await ApiClient.removeTeamInvite(email);
-      setState(prev => prev?.workspace ? { ...prev, workspace: { ...prev.workspace!, invitedEmails: res.invitedEmails, memberCount: res.invitedEmails.length + (prev.workspace?.memberIds.length ?? 0) + 1 } } : prev);
-      showMsg('success', 'Invite removed.');
+      await ApiClient.revokeTeamInvite(inviteId);
+      setState(prev => {
+        if (!prev?.workspace) return prev;
+        return {
+          ...prev,
+          workspace: {
+            ...prev.workspace!,
+            pendingInvites: prev.workspace!.pendingInvites.filter(i => i.id !== inviteId),
+          },
+        };
+      });
+      showMsg('success', 'Invite revoked.');
     } catch (err) {
-      showMsg('error', err instanceof Error ? err.message : 'Failed to remove invite');
+      showMsg('error', err instanceof Error ? err.message : 'Failed to revoke invite');
     }
+  }
+
+  async function handleRegenerate(inviteId: string) {
+    setRegenLoading(inviteId);
+    setFreshInviteUrl(null);
+    setRegenResult(null);
+    try {
+      const res = await ApiClient.regenerateTeamInvite(inviteId);
+      setRegenResult({ inviteId: res.inviteId, inviteUrl: res.inviteUrl });
+      // Replace old invite with new one
+      setState(prev => {
+        if (!prev?.workspace) return prev;
+        return {
+          ...prev,
+          workspace: {
+            ...prev.workspace!,
+            pendingInvites: prev.workspace!.pendingInvites.map(i =>
+              i.id === inviteId
+                ? { ...i, id: res.inviteId, expiresAt: res.expiresAt }
+                : i,
+            ),
+          },
+        };
+      });
+      showMsg('success', 'New invite link generated. Share the link below.');
+    } catch (err) {
+      showMsg('error', err instanceof Error ? err.message : 'Failed to regenerate invite');
+    } finally { setRegenLoading(null); }
+  }
+
+  async function handleRoleChange(targetUserId: string, role: TeamRole) {
+    setRoleChangeTarget(targetUserId);
+    try {
+      const ws = await ApiClient.updateTeamMemberRole(targetUserId, role);
+      setState(prev => prev ? { ...prev, workspace: ws } : null);
+      showMsg('success', 'Role updated.');
+    } catch (err) {
+      showMsg('error', err instanceof Error ? err.message : 'Failed to update role');
+    } finally { setRoleChangeTarget(null); }
+  }
+
+  async function handleRemoveMember(targetUserId: string) {
+    setRemovingMember(targetUserId);
+    try {
+      const ws = await ApiClient.removeTeamMember(targetUserId);
+      setState(prev => prev ? { ...prev, workspace: ws } : null);
+      showMsg('success', 'Member removed.');
+    } catch (err) {
+      showMsg('error', err instanceof Error ? err.message : 'Failed to remove member');
+    } finally { setRemovingMember(null); }
   }
 
   async function handleAddProject(e: FormEvent) {
@@ -147,12 +309,12 @@ export default function TeamPage() {
     } finally { setReportLoading(false); }
   }
 
-  function showMsg(type: 'success' | 'error', text: string) {
-    setMsg({ type, text });
-    setTimeout(() => setMsg(null), 4000);
-  }
-
   const ws = state?.workspace as TeamWorkspace | undefined;
+  const plan = state?.plan || 'free';
+  const maxMembers = ws?.maxMembers ?? state?.entitlements?.maxTeamMembers ?? 1;
+  const usedSlots = (ws?.memberCount ?? 0) + (ws?.pendingInvites?.length ?? 0);
+  const canInvite = usedSlots < maxMembers;
+  const isOwner = ws && (ws.ownerId === ws.members?.find(m => m.role === 'owner')?.userId);
 
   if (loading) return (
     <div className="min-h-screen" style={{ background: 'rgb(3, 6, 14)', position: 'relative' }}>
@@ -161,6 +323,28 @@ export default function TeamPage() {
       <div className="md:pl-60" style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
         <Spinner size="lg" />
       </div>
+    </div>
+  );
+
+  const inviteLinkBox = (url: string, label: string) => (
+    <div style={{
+      marginTop: 12, padding: '14px 16px', borderRadius: 11,
+      background: 'rgba(0,80,200,0.08)', border: '1px solid rgba(0,160,255,0.25)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Link2 size={13} style={{ color: '#40b8ff' }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>{label}</span>
+        </div>
+        <CopyButton text={url} />
+      </div>
+      <p style={{
+        fontSize: 11, color: '#40b8ff', wordBreak: 'break-all', margin: 0,
+        padding: '8px 10px', borderRadius: 7, background: 'rgba(0,0,0,0.25)',
+      }}>{url}</p>
+      <p style={{ fontSize: 11, color: 'rgba(80,110,160,0.7)', marginTop: 8, marginBottom: 0 }}>
+        This link is shown once. Save it or share it now.
+      </p>
     </div>
   );
 
@@ -190,7 +374,9 @@ export default function TeamPage() {
                     WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 3,
                   }}>Team Workspace</h1>
                   <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.85)' }}>
-                    {ws ? `${ws.memberCount} member${ws.memberCount !== 1 ? 's' : ''} · ${ws.sharedProjects?.length ?? 0} projects` : 'Collaborate with your team'}
+                    {ws
+                      ? `${ws.memberCount} member${ws.memberCount !== 1 ? 's' : ''} · ${ws.sharedProjects?.length ?? 0} projects`
+                      : 'Collaborate with your team'}
                   </p>
                 </div>
               </div>
@@ -198,8 +384,8 @@ export default function TeamPage() {
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
                   background: 'rgba(120,80,200,0.15)', border: '1px solid rgba(150,100,240,0.3)',
-                  color: '#a78bfa', letterSpacing: '0.06em',
-                }}>TEAM</span>
+                  color: '#a78bfa', letterSpacing: '0.06em', textTransform: 'uppercase',
+                }}>{plan}</span>
               )}
             </div>
 
@@ -217,62 +403,15 @@ export default function TeamPage() {
               </div>
             )}
 
-            {/* ── Gate: non-team plan ── */}
-            {state?.upgradeRequired && (
-              <div style={{ ...panel, padding: '32px', textAlign: 'center' }}>
-                <div style={{
-                  width: 60, height: 60, borderRadius: '50%', margin: '0 auto 20px',
-                  background: 'rgba(120,80,200,0.1)', border: '1px solid rgba(150,100,240,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Lock size={26} style={{ color: 'rgba(130,100,220,0.6)' }} />
-                </div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'rgba(180,210,240,0.9)', marginBottom: 12 }}>
-                  Team Workspace requires a Team plan
-                </h2>
-                <p style={{ fontSize: 14, color: 'rgba(90,120,160,0.7)', marginBottom: 24, maxWidth: 460, margin: '0 auto 24px' }}>
-                  Upgrade to Team to unlock shared workspaces, member invites, shared projects, team analytics, admin controls, and Team Weekly Reports.
-                </p>
-
-                <div style={{ display: 'grid', gap: 10, marginBottom: 28, maxWidth: 440, margin: '0 auto 28px' }} className="md:grid-cols-2">
-                  {[
-                    { icon: Users, label: 'Up to 10 team members' },
-                    { icon: FolderKanban, label: 'Shared projects' },
-                    { icon: Activity, label: 'Team activity feed' },
-                    { icon: BarChart2, label: 'Team analytics + reports' },
-                    { icon: Shield, label: 'Admin controls' },
-                    { icon: Sparkles, label: 'Team weekly AI report' },
-                  ].map(({ icon: Icon, label }) => (
-                    <div key={label} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                      borderRadius: 10, background: 'rgba(120,80,200,0.05)', border: '1px solid rgba(150,100,240,0.12)',
-                    }}>
-                      <Icon size={14} style={{ color: 'rgba(130,100,220,0.6)', flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, color: 'rgba(140,120,200,0.8)' }}>{label}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <Link href="/pricing" style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '11px 24px', borderRadius: 11, fontSize: 14, fontWeight: 700,
-                  background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-                  border: '1px solid rgba(124,58,237,0.5)', color: '#fff',
-                  textDecoration: 'none', boxShadow: '0 4px 20px rgba(124,58,237,0.3)',
-                }}>
-                  <Zap size={14} /> Upgrade to Team — $29/month
-                </Link>
-              </div>
-            )}
-
-            {/* ── No workspace yet (team plan) ── */}
-            {!state?.upgradeRequired && !ws && (
+            {/* ── No workspace yet ── */}
+            {!ws && (
               <div style={{ ...panel, padding: '32px', maxWidth: 500 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 700, color: 'rgba(180,210,240,0.9)', marginBottom: 8 }}>
                   Create your Team Workspace
                 </h2>
                 <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.7)', marginBottom: 20 }}>
-                  Set up a workspace to invite your team, share projects, and collaborate.
+                  Set up a workspace to invite collaborators, share projects, and track team activity.
+                  {plan === 'free' && ' Free plan includes 1 seat (just you). Upgrade to Pro to invite teammates.'}
                 </p>
                 <form onSubmit={handleCreate} style={{ display: 'flex', gap: 10 }}>
                   <input
@@ -323,9 +462,9 @@ export default function TeamPage() {
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div style={{
-                          width: 40, height: 40, borderRadius: 12,
+                          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
                           background: 'rgba(120,80,200,0.12)', border: '1px solid rgba(150,100,240,0.2)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
                           <Users size={18} style={{ color: '#a78bfa' }} />
                         </div>
@@ -342,72 +481,194 @@ export default function TeamPage() {
 
                 {/* Members */}
                 <div style={panel}>
-                  <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>
-                      Members <span style={{ fontSize: 12, fontWeight: 400, color: 'rgba(70,100,140,0.7)', marginLeft: 4 }}>{ws.memberCount} / 10</span>
-                    </span>
+                  <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <Users size={14} style={{ color: '#a78bfa' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>
+                        Members
+                      </span>
+                      <span style={{ fontSize: 11, color: usedSlots >= maxMembers ? '#ef4444' : 'rgba(70,100,140,0.7)' }}>
+                        {usedSlots} / {maxMembers}
+                      </span>
+                    </div>
+                    {!canInvite && plan !== 'team' && (
+                      <Link href="/pricing" style={{
+                        fontSize: 11, fontWeight: 600, color: '#a78bfa', textDecoration: 'none',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                      }}>
+                        <Zap size={11} /> Upgrade for more
+                      </Link>
+                    )}
                   </div>
                   <div style={{ padding: '16px 20px 20px' }}>
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9,
-                        background: 'rgba(0,130,255,0.06)', border: '1px solid rgba(0,160,255,0.12)', marginBottom: 8,
-                      }}>
-                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(120,80,200,0.2)', border: '1px solid rgba(150,100,240,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Users size={14} style={{ color: '#a78bfa' }} />
-                        </div>
-                        <div>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>You (owner)</p>
-                          <p style={{ fontSize: 11, color: 'rgba(70,100,140,0.6)' }}>Admin</p>
-                        </div>
-                      </div>
-                      {ws.invitedEmails.map(email => (
-                        <div key={email} style={{
+                    {/* Member list */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+                      {(ws.members || []).map(member => (
+                        <div key={member.userId} style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                          padding: '10px 12px', borderRadius: 9, marginBottom: 6,
-                          background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0,160,255,0.08)',
+                          padding: '10px 12px', borderRadius: 9,
+                          background: member.role === 'owner' ? 'rgba(120,80,200,0.06)' : 'rgba(0,0,0,0.25)',
+                          border: `1px solid ${member.role === 'owner' ? 'rgba(150,100,240,0.18)' : 'rgba(0,160,255,0.08)'}`,
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,100,200,0.1)', border: '1px solid rgba(0,160,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Users size={13} style={{ color: '#40b8ff' }} />
-                            </div>
-                            <div>
-                              <p style={{ fontSize: 13, color: 'rgba(160,200,240,0.85)' }}>{email}</p>
-                              <p style={{ fontSize: 10, color: 'rgba(70,100,140,0.5)' }}>Invited — pending</p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                            <MemberAvatar member={member} />
+                            <div style={{ minWidth: 0 }}>
+                              <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {member.name || member.email || member.userId}
+                              </p>
+                              {member.name && member.email && (
+                                <p style={{ fontSize: 11, color: 'rgba(70,100,140,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.email}</p>
+                              )}
                             </div>
                           </div>
-                          <button
-                            onClick={() => handleRemoveInvite(email)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(90,120,160,0.4)', padding: 4 }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            <RoleBadge role={member.role} />
+                            {member.role !== 'owner' && (
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                {/* Role change: only owner can change roles */}
+                                <select
+                                  value={member.role}
+                                  onChange={e => handleRoleChange(member.userId, e.target.value as TeamRole)}
+                                  disabled={roleChangeTarget === member.userId}
+                                  title="Change role"
+                                  style={{
+                                    fontSize: 11, background: 'rgba(0,0,0,0.35)',
+                                    border: '1px solid rgba(0,160,255,0.12)', borderRadius: 6,
+                                    color: 'rgba(140,170,210,0.7)', padding: '2px 4px', cursor: 'pointer', outline: 'none',
+                                  }}
+                                >
+                                  <option value="member">Member</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                                <button
+                                  onClick={() => handleRemoveMember(member.userId)}
+                                  disabled={removingMember === member.userId}
+                                  title="Remove member"
+                                  style={{
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: 'rgba(90,120,160,0.4)', padding: 4, borderRadius: 5,
+                                    display: 'flex', alignItems: 'center',
+                                  }}
+                                >
+                                  <UserMinus size={13} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
 
-                    {ws.memberCount < 10 ? (
-                      <form onSubmit={handleInvite} style={{ display: 'flex', gap: 10 }}>
-                        <input
-                          type="email" value={inviteEmail}
-                          onChange={e => setInviteEmail(e.target.value)}
-                          placeholder="teammate@company.com"
-                          required
-                          style={{
-                            flex: 1, height: 40, padding: '0 12px', borderRadius: 9,
-                            border: '1px solid rgba(0,160,255,0.15)', background: 'rgba(0,0,0,0.4)',
-                            color: 'rgba(200,220,245,0.9)', fontSize: 13, outline: 'none',
-                          }}
-                        />
-                        <Button type="submit" size="sm" loading={inviting}>
-                          <Plus size={13} /> Invite
-                        </Button>
+                    {/* Invite form */}
+                    {canInvite ? (
+                      <form onSubmit={handleInvite}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <input
+                            type="email" value={inviteEmail}
+                            onChange={e => setInviteEmail(e.target.value)}
+                            placeholder="teammate@company.com"
+                            required
+                            style={{
+                              flex: 1, minWidth: 180, height: 40, padding: '0 12px', borderRadius: 9,
+                              border: '1px solid rgba(0,160,255,0.15)', background: 'rgba(0,0,0,0.4)',
+                              color: 'rgba(200,220,245,0.9)', fontSize: 13, outline: 'none',
+                            }}
+                          />
+                          <select
+                            value={inviteRole}
+                            onChange={e => setInviteRole(e.target.value as TeamRole)}
+                            style={{
+                              height: 40, padding: '0 10px', borderRadius: 9, fontSize: 13,
+                              border: '1px solid rgba(0,160,255,0.15)', background: 'rgba(0,0,0,0.4)',
+                              color: 'rgba(180,210,240,0.85)', outline: 'none', cursor: 'pointer',
+                            }}
+                          >
+                            <option value="member">Member</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                          <Button type="submit" size="sm" loading={inviting}>
+                            <Plus size={13} /> Invite
+                          </Button>
+                        </div>
+                        {freshInviteUrl && inviteLinkBox(freshInviteUrl, 'Invite link — share this with your teammate')}
                       </form>
                     ) : (
-                      <p style={{ fontSize: 12, color: 'rgba(70,100,140,0.6)' }}>Member limit reached (10 / 10).</p>
+                      <div style={{ fontSize: 12, color: 'rgba(90,120,160,0.6)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        Member limit reached ({maxMembers} / {maxMembers}).
+                        {plan !== 'team' && (
+                          <Link href="/pricing" style={{ color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}>
+                            Upgrade →
+                          </Link>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
+
+                {/* Pending Invites */}
+                {(ws.pendingInvites?.length ?? 0) > 0 && (
+                  <div style={panel}>
+                    <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <Link2 size={14} style={{ color: '#40b8ff' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>
+                        Pending Invitations <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(70,100,140,0.7)', marginLeft: 4 }}>({ws.pendingInvites.length})</span>
+                      </span>
+                    </div>
+                    <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {ws.pendingInvites.map(inv => (
+                        <div key={inv.id}>
+                          <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                            padding: '10px 12px', borderRadius: 9,
+                            background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(0,160,255,0.08)',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                              <div style={{
+                                width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                                background: 'rgba(0,100,200,0.1)', border: '1px solid rgba(0,160,255,0.15)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                <Users size={13} style={{ color: '#40b8ff' }} />
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <p style={{ fontSize: 13, color: 'rgba(160,200,240,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.invitedEmail}</p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                  <RoleBadge role={inv.role} />
+                                  <span style={{ fontSize: 10, color: 'rgba(70,100,140,0.5)' }}>
+                                    Expires {new Date(inv.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                              <button
+                                onClick={() => handleRegenerate(inv.id)}
+                                disabled={regenLoading === inv.id}
+                                title="Generate new link"
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px',
+                                  borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                                  background: 'rgba(0,100,200,0.08)', border: '1px solid rgba(0,160,255,0.15)',
+                                  color: '#40b8ff',
+                                }}
+                              >
+                                <RefreshCw size={11} /> New link
+                              </button>
+                              <button
+                                onClick={() => handleRevokeInvite(inv.id)}
+                                title="Revoke invite"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(90,120,160,0.4)', padding: 4 }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                          {regenResult && regenResult.inviteId === inv.id && inviteLinkBox(regenResult.inviteUrl, 'New invite link — shown once')}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Shared Projects */}
                 <div style={panel}>
@@ -465,7 +726,7 @@ export default function TeamPage() {
                     )}
                     {(ws.sharedProjects ?? []).length === 0 ? (
                       <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.6)', textAlign: 'center', padding: '16px 0' }}>
-                        No shared projects yet. Add one to collaborate with your team.
+                        No shared projects yet.
                       </p>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -483,7 +744,7 @@ export default function TeamPage() {
                                   <p style={{ fontSize: 11, color: 'rgba(90,120,160,0.7)', marginTop: 2 }}>{project.description}</p>
                                 )}
                                 <p style={{ fontSize: 10, color: 'rgba(70,100,140,0.5)', marginTop: 4 }}>
-                                  Created {new Date(project.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {new Date(project.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                 </p>
                               </div>
                             </div>
@@ -508,9 +769,13 @@ export default function TeamPage() {
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Activity Feed</span>
                     </div>
                     <div style={{ padding: '16px 20px 20px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {(ws.activityFeed ?? []).slice(0, 20).map((entry: ActivityEntry) => (
-                          <div key={entry.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 12, color: 'rgba(140,180,230,0.8)', padding: '6px 0', borderBottom: '1px solid rgba(0,160,255,0.04)' }}>
+                          <div key={entry.id} style={{
+                            display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 12,
+                            color: 'rgba(140,180,230,0.8)', padding: '6px 0',
+                            borderBottom: '1px solid rgba(0,160,255,0.04)',
+                          }}>
                             <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(0,160,255,0.4)', flexShrink: 0, marginTop: 5 }} />
                             <span style={{ flex: 1 }}>{entry.action}</span>
                             <span style={{ fontSize: 10, color: 'rgba(70,100,140,0.5)', flexShrink: 0 }}>
@@ -527,26 +792,38 @@ export default function TeamPage() {
                 <div style={{ ...panel, borderLeft: '3px solid rgba(124,58,237,0.5)' }}>
                   <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <RefreshCw size={14} style={{ color: '#a78bfa' }} />
+                      <BarChart2 size={14} style={{ color: '#a78bfa' }} />
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Team Weekly Execution Report</span>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {report && (
-                        <button onClick={() => setReport(null)} style={{ fontSize: 11, color: 'rgba(70,100,140,0.6)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        <button onClick={() => setReport(null)} style={{ fontSize: 11, color: 'rgba(70,100,140,0.6)', background: 'none', border: 'none', cursor: 'pointer' }}>
                           Regenerate
                         </button>
                       )}
-                      {!report && (
+                      {!report && plan === 'team' && (
                         <Button size="sm" onClick={handleGenerateReport} loading={reportLoading}>
                           <Sparkles size={12} /> Generate
                         </Button>
+                      )}
+                      {!report && plan !== 'team' && (
+                        <Link href="/pricing" style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+                          background: 'rgba(120,80,200,0.08)', border: '1px solid rgba(150,100,240,0.2)',
+                          color: '#a78bfa', textDecoration: 'none',
+                        }}>
+                          <Zap size={11} /> Team plan
+                        </Link>
                       )}
                     </div>
                   </div>
                   <div style={{ padding: '16px 20px 20px' }}>
                     {!report ? (
                       <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.75)' }}>
-                        Generate your team's weekly execution report — activity summary, shared priorities, execution risks, and suggested next actions.
+                        {plan === 'team'
+                          ? 'Generate your team\'s weekly execution report — activity summary, shared priorities, risks, and suggested next actions.'
+                          : 'Team weekly AI reports require a Team plan.'}
                       </p>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -559,7 +836,6 @@ export default function TeamPage() {
                           </div>
                         </div>
                         <p style={{ fontSize: 13, color: 'rgba(180,210,240,0.85)', lineHeight: 1.7 }}>{report.activitySummary}</p>
-
                         <div style={{ display: 'grid', gap: 12 }} className="md:grid-cols-2">
                           {report.sharedPriorities.length > 0 && (
                             <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(0,130,255,0.05)', border: '1px solid rgba(0,160,255,0.12)' }}>
@@ -584,7 +860,6 @@ export default function TeamPage() {
                             </div>
                           )}
                         </div>
-
                         <div>
                           <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(90,120,160,0.7)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Suggested Next Actions</p>
                           {report.suggestedNextActions.map((action, i) => (
@@ -599,19 +874,19 @@ export default function TeamPage() {
                   </div>
                 </div>
 
-                {/* Admin Controls */}
+                {/* Admin info */}
                 <div style={{ ...panel, borderColor: 'rgba(80,60,160,0.15)' }}>
                   <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)', display: 'flex', alignItems: 'center', gap: 7 }}>
                     <Shield size={14} style={{ color: '#a78bfa' }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Admin Controls</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Workspace Info</span>
                   </div>
                   <div style={{ padding: '16px 20px 20px' }}>
                     <div style={{ display: 'grid', gap: 10 }} className="md:grid-cols-2">
                       {[
-                        { label: 'Workspace owner', value: 'You' },
-                        { label: 'Plan', value: 'Team' },
-                        { label: 'Member slots', value: `${ws.memberCount} / 10` },
-                        { label: 'Active projects', value: String(ws.sharedProjects?.length ?? 0) },
+                        { label: 'Plan', value: plan.charAt(0).toUpperCase() + plan.slice(1) },
+                        { label: 'Member slots', value: `${usedSlots} / ${maxMembers}` },
+                        { label: 'Active members', value: String(ws.memberCount) },
+                        { label: 'Shared projects', value: String(ws.sharedProjects?.length ?? 0) },
                       ].map(({ label, value }) => (
                         <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 8, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(0,160,255,0.07)' }}>
                           <span style={{ fontSize: 12, color: 'rgba(90,120,160,0.7)' }}>{label}</span>

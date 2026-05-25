@@ -81,6 +81,7 @@ function SettingsContent() {
   const [portalLoading, setPortalLoading]       = useState(false);
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
   const [restartingOnboarding, setRestartingOnboarding] = useState(false);
+  const [teamWorkspace, setTeamWorkspace]               = useState<import('@/types/index').TeamWorkspace | null>(null);
 
   useEffect(() => {
     if (checking) return;
@@ -109,6 +110,10 @@ function SettingsContent() {
       .then(b => setBilling(b))
       .catch(() => setBilling(null))
       .finally(() => setBillingLoading(false));
+
+    ApiClient.getTeamWorkspace()
+      .then(ts => { if (ts.exists && ts.workspace) setTeamWorkspace(ts.workspace); })
+      .catch(() => {});
 
     const billingParam = searchParams.get('billing');
     if (billingParam === 'success') setBillingMsg('Your plan has been upgraded successfully.');
@@ -475,6 +480,57 @@ function SettingsContent() {
                 )}
               </div>
             </div>
+
+            {/* ── Team Workspace ── */}
+            <SettingsCard title="Team Workspace" icon={Users}>
+              {teamWorkspace ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+                      background: 'rgba(120,80,200,0.12)', border: '1px solid rgba(150,100,240,0.22)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Users size={17} style={{ color: '#a78bfa' }} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: 'rgba(200,220,245,0.95)', marginBottom: 2 }}>{teamWorkspace.name}</p>
+                      <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.75)' }}>
+                        {teamWorkspace.memberCount} member{teamWorkspace.memberCount !== 1 ? 's' : ''}
+                        {' · '}max {teamWorkspace.maxMembers} on current plan
+                        {(teamWorkspace.pendingInvites?.length ?? 0) > 0 && (
+                          <span style={{ color: '#40b8ff', marginLeft: 6 }}>
+                            · {teamWorkspace.pendingInvites.length} pending
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <Link href="/team" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    background: 'rgba(120,80,200,0.08)', border: '1px solid rgba(150,100,240,0.2)',
+                    color: '#a78bfa', textDecoration: 'none',
+                  }}>
+                    <Users size={12} /> Open Workspace <ChevronRight size={11} />
+                  </Link>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.8)', marginBottom: 12 }}>
+                    You don't have a team workspace yet. Create one to invite collaborators and share projects.
+                  </p>
+                  <Link href="/team" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    background: 'rgba(120,80,200,0.08)', border: '1px solid rgba(150,100,240,0.2)',
+                    color: '#a78bfa', textDecoration: 'none',
+                  }}>
+                    <Users size={12} /> Set up workspace <ChevronRight size={11} />
+                  </Link>
+                </div>
+              )}
+            </SettingsCard>
 
             {/* ── Preferences ── */}
             <SettingsCard title="Preferences" icon={Settings}>
