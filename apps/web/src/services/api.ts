@@ -1,9 +1,20 @@
+import { getToken, clearAuth, saveUser, getUser } from '@/lib/auth';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+// These codes, returned in 401 response bodies, indicate a real auth failure
+// (bad/expired JWT). We clear auth state and redirect to /login on these.
+// Any other 401 (proxy, no code) does NOT auto-redirect.
+const AUTH_FAILURE_CODES = new Set(['NO_TOKEN', 'INVALID_TOKEN', 'EXPIRED_TOKEN']);
+
+// Endpoints where a 401 should NOT trigger the global redirect. The session
+// restore hook handles /auth/me directly so it can distinguish auth failures
+// from temporary network errors.
+const NO_REDIRECT_ENDPOINTS = new Set(['/auth/login', '/auth/register', '/auth/me']);
 
 export class ApiClient {
   private static getAuthToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('token');
+    return getToken();
   }
 
   private static getHeaders(): Record<string, string> {
@@ -48,10 +59,13 @@ export class ApiClient {
         }));
 
         if (response.status === 401) {
-          const isAuthEndpoint = endpoint === '/auth/login' || endpoint === '/auth/register';
-          if (!isAuthEndpoint && typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            localStorage.removeItem('md:me');
+          const isNoRedirect = NO_REDIRECT_ENDPOINTS.has(endpoint);
+          const isAuthFailure = AUTH_FAILURE_CODES.has(error.code ?? '');
+          // Only clear auth + redirect when the backend explicitly signals
+          // an auth failure code. This prevents false logouts from proxy 401s
+          // or cold-start edge cases.
+          if (!isNoRedirect && isAuthFailure && typeof window !== 'undefined') {
+            clearAuth();
             window.location.href = '/login';
           }
         }
@@ -104,16 +118,41 @@ export class ApiClient {
     );
   }
 
-  static getMe() {
+  /**
+   * fetchMe — intended for useSessionRestore only.
+   * Has NO fallback: throws on any error so the hook can distinguish
+   * a real auth failure from a temporary network/server problem.
+   * (/auth/me is in NO_REDIRECT_ENDPOINTS so the 401 redirect does not fire here.)
+   */
+  static fetchMe() {
     return this.request<{
       id: string; _id: string; email: string; name?: string | null;
       avatarUrl?: string | null; authProvider?: string; plan?: string;
       subscriptionStatus?: string | null; emailVerified?: boolean;
-    }>('/auth/me').catch(() => {
-      if (typeof window === 'undefined') return { id: '', _id: '', email: '' } as any;
-      const me = JSON.parse(localStorage.getItem('md:me') || 'null');
-      return me || { id: '', _id: '', email: '' };
-    });
+    }>('/auth/me');
+  }
+
+  /**
+   * getMe — for page-level data loading.
+   * Has a localStorage fallback so pages remain usable during server cold-starts
+   * or temporary network issues.
+   */
+  static async getMe() {
+    try {
+      const user = await this.request<{
+        id: string; _id: string; email: string; name?: string | null;
+        avatarUrl?: string | null; authProvider?: string; plan?: string;
+        subscriptionStatus?: string | null; emailVerified?: boolean;
+      }>('/auth/me');
+      // Keep the cache fresh on every successful /auth/me call.
+      saveUser(user);
+      return user;
+    } catch {
+      // Network / timeout error — return cached user so the page stays usable.
+      const cached = getUser();
+      if (cached) return cached as any;
+      return { id: '', _id: '', email: '' } as any;
+    }
   }
 
   static forgotPassword(email: string) {

@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { CheckSquare, Plus, Pencil, Trash2, Search, AlertCircle, Check, Sparkles, Zap, Target, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
-import { getToken } from '@/lib/auth';
+import { useSessionRestore } from '@/hooks/useSessionRestore';
 import { Task, TaskCleanupResult } from '@/types/index';
 import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
@@ -28,7 +27,7 @@ const panel: React.CSSProperties = {
 };
 
 export default function TasksPage() {
-  const router = useRouter();
+  const { checking } = useSessionRestore();
   const [tasks, setTasks]           = useState<Task[]>([]);
   const [loading, setLoading]       = useState(true);
   const [filter, setFilter]         = useState<Filter>('all');
@@ -45,9 +44,10 @@ export default function TasksPage() {
   const [cleanupLoading, setCleanupLoading] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) { setLoading(false); router.push('/login'); return; }
+    if (checking) return;
     loadTasks();
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking]);
 
   async function loadTasks() {
     try {

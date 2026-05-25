@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { Timer, Play, Pause, RotateCcw, CheckCircle2, Flame, AlertCircle, Sparkles, Zap, Target, BookMarked, Plus, Trash2, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
-import { getToken } from '@/lib/auth';
+import { useSessionRestore } from '@/hooks/useSessionRestore';
 import { FocusSession, Task, FocusRecommendation, SavedExecutionPlan } from '@/types/index';
 import { buildWorkspaceContext } from '@/lib/aiContext';
 import { useBilling } from '@/hooks/useBilling';
@@ -78,7 +77,7 @@ const panel: React.CSSProperties = {
 };
 
 export default function FocusPage() {
-  const router = useRouter();
+  const { checking } = useSessionRestore();
   const { entitlements } = useBilling();
   const canSavePlans = entitlements?.canSaveExecutionPlans ?? false;
 
@@ -108,10 +107,11 @@ export default function FocusPage() {
   const sessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!getToken()) { setDataLoading(false); router.push('/login'); return; }
+    if (checking) return;
     loadData();
     if (canSavePlans) loadSavedPlans();
-  }, [router, canSavePlans]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking, canSavePlans]);
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 

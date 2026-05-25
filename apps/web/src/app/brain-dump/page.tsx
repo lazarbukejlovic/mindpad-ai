@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { Brain, Sparkles, Save, Trash2, CheckCircle2, AlertCircle, Target, Zap, Clock, Tag, Bot, BookMarked } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
-import { getToken } from '@/lib/auth';
+import { useSessionRestore } from '@/hooks/useSessionRestore';
 import { OrganizeResult, BrainDump } from '@/types/index';
 import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
@@ -26,7 +25,7 @@ const panel: React.CSSProperties = {
 };
 
 export default function BrainDumpPage() {
-  const router = useRouter();
+  const { checking } = useSessionRestore();
   const [content, setContent]       = useState('');
   const [loading, setLoading]       = useState(false);
   const [dumpsLoading, setDumpsLoading] = useState(true);
@@ -45,10 +44,11 @@ export default function BrainDumpPage() {
   const canSavePlans = entitlements?.canSaveExecutionPlans ?? false;
 
   useEffect(() => {
-    if (!getToken()) { setDumpsLoading(false); router.push('/login'); return; }
+    if (checking) return;
     loadBrainDumps();
     ApiClient.getAIStatus().then(s => setAiMode(s.mode)).catch(() => setAiMode('offline'));
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking]);
 
   async function loadBrainDumps() {
     try {

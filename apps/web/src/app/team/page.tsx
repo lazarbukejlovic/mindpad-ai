@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   Users, Plus, Trash2, AlertCircle, CheckCircle2, Pencil, Zap,
   FolderKanban, Activity, BarChart2, Sparkles, Lock, RefreshCw, Shield,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
-import { getToken } from '@/lib/auth';
+import { useSessionRestore } from '@/hooks/useSessionRestore';
 import { TeamWorkspaceState, TeamWorkspace, TeamWeeklyReport, SharedProject, ActivityEntry } from '@/types/index';
 import AppNav from '@/components/layout/AppNav';
 import Button from '@/components/ui/Button';
@@ -24,7 +23,7 @@ const panel: React.CSSProperties = {
 };
 
 export default function TeamPage() {
-  const router = useRouter();
+  const { checking } = useSessionRestore();
   const [state, setState]               = useState<TeamWorkspaceState | null>(null);
   const [loading, setLoading]           = useState(true);
   const [workspaceName, setWorkspaceName] = useState('');
@@ -45,9 +44,10 @@ export default function TeamPage() {
   const [reportLoading, setReportLoading] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) { router.push('/login'); return; }
+    if (checking) return;
     loadWorkspace();
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking]);
 
   async function loadWorkspace() {
     try {

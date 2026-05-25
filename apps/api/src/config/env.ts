@@ -8,6 +8,7 @@ export const config = {
   apiUrl: process.env.API_URL || 'http://localhost:4000/api',
   mongodbUri: process.env.MONGODB_URI || '',
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-key-change-in-production',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripePriceProMonthly: process.env.STRIPE_PRICE_PRO_MONTHLY || '',

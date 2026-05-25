@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   BarChart3, CheckCircle2, Clock, Flame, ListTodo, Percent, Moon, Sparkles,
   FileText, RefreshCw, Copy, Check,
@@ -11,7 +10,7 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
-import { getToken } from '@/lib/auth';
+import { useSessionRestore } from '@/hooks/useSessionRestore';
 import { AnalyticsSummary, WeeklyReview, ExportSummary } from '@/types/index';
 import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
@@ -89,7 +88,7 @@ function LockedProCard({ title, description }: { title: string; description: str
 }
 
 export default function AnalyticsPage() {
-  const router = useRouter();
+  const { checking } = useSessionRestore();
   const { plan, entitlements, isPro, isTeam } = useBilling();
   const [analytics, setAnalytics]         = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading]             = useState(true);
@@ -110,12 +109,13 @@ export default function AnalyticsPage() {
   const [copied, setCopied]                 = useState(false);
 
   useEffect(() => {
-    if (!getToken()) { router.push('/login'); return; }
+    if (checking) return;
     ApiClient.getAnalyticsSummary()
       .then(setAnalytics)
       .catch(() => setAnalytics(null))
       .finally(() => setLoading(false));
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking]);
 
   async function handleEveningSummary() {
     if (!analytics) return;

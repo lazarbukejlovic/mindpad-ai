@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Check, Zap, Users, Brain, Sparkles, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
-import { getToken } from '@/lib/auth';
+import { isAuthenticated } from '@/lib/auth';
 import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
 import NeuralBackground from '@/components/ui/NeuralBackground';
@@ -73,7 +73,7 @@ export default function PricingPage() {
   const [msg, setMsg] = useState('');
 
   async function handleUpgrade(plan: 'pro' | 'team') {
-    if (!getToken()) { router.push('/register'); return; }
+    if (!isAuthenticated()) { router.push('/register'); return; }
     setUpgradeLoading(plan);
     setMsg('');
     try {
@@ -86,7 +86,7 @@ export default function PricingPage() {
     }
   }
 
-  const isLoggedIn = !!getToken();
+  const isLoggedIn = !!isAuthenticated();
 
   return (
     <div className="min-h-screen" style={{ background: 'rgb(3, 6, 14)', position: 'relative' }}>

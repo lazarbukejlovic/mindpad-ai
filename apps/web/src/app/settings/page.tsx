@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck, CreditCard, Zap, Users, CheckCircle2, Lock, ChevronRight, MailCheck } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
-import { getToken, removeToken } from '@/lib/auth';
+import { clearAuth } from '@/lib/auth';
+import { useSessionRestore } from '@/hooks/useSessionRestore';
 import VerificationBanner from '@/components/ui/VerificationBanner';
 import { BillingStatus } from '@/types/index';
 import AppNav from '@/components/layout/AppNav';
@@ -63,6 +64,7 @@ const PLAN_FEATURES: Record<string, { unlocked: string[]; locked?: string[] }> =
 function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { checking } = useSessionRestore();
   const [email, setEmail]                       = useState('');
   const [name, setName]                         = useState('');
   const [avatarUrl, setAvatarUrl]               = useState('');
@@ -79,7 +81,7 @@ function SettingsContent() {
   const [portalLoading, setPortalLoading]       = useState(false);
 
   useEffect(() => {
-    if (!getToken()) { router.push('/login'); return; }
+    if (checking) return;
 
     ApiClient.getMe()
       .then(d => {
@@ -88,15 +90,9 @@ function SettingsContent() {
         if (d.avatarUrl) setAvatarUrl(d.avatarUrl);
         if (d.authProvider) setAuthProvider(d.authProvider);
         setEmailVerified(d.emailVerified ?? false);
-        try { localStorage.setItem('md:me', JSON.stringify({ email: d.email, name: d.name, avatarUrl: d.avatarUrl })); } catch {}
       })
       .catch(() => {
-        try {
-          const cached = JSON.parse(localStorage.getItem('md:me') || 'null');
-          if (cached?.email) setEmail(cached.email);
-          if (cached?.name) setName(cached.name);
-          if (cached?.avatarUrl) setAvatarUrl(cached.avatarUrl);
-        } catch {}
+        // Network error — page stays usable with whatever was shown before
       })
       .finally(() => setLoading(false));
 
@@ -117,7 +113,8 @@ function SettingsContent() {
     } else if (verifiedParam === 'error') {
       setVerifyMsg('Verification link is invalid or has expired. Please request a new one below.');
     }
-  }, [router, searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking, searchParams]);
 
   function handleExport() {
     setExportMsg('Data export is available in the full release. Your data is securely stored.');
@@ -125,8 +122,8 @@ function SettingsContent() {
   }
 
   function handleLogout() {
-    removeToken();
-    router.push('/');
+    clearAuth();
+    router.push('/login');
   }
 
   async function handleUpgrade(plan: 'pro' | 'team') {

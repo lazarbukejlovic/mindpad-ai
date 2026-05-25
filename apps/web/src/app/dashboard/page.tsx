@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -9,7 +9,8 @@ import {
   Send, MessageSquare, ChevronRight,
 } from 'lucide-react';
 import { ApiClient } from '@/services/api';
-import { getToken, saveToken } from '@/lib/auth';
+import { saveToken } from '@/lib/auth';
+import { useSessionRestore } from '@/hooks/useSessionRestore';
 import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief } from '@/types/index';
 import { buildWorkspaceContext } from '@/lib/aiContext';
 import AppNav from '@/components/layout/AppNav';
@@ -74,6 +75,7 @@ const SUGGESTED_QUESTIONS = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { checking } = useSessionRestore();
   const [loading, setLoading]           = useState(true);
   const [tasks, setTasks]               = useState<Task[]>([]);
   const [analytics, setAnalytics]       = useState<AnalyticsSummary | null>(null);
@@ -96,25 +98,24 @@ export default function DashboardPage() {
   const [askLoading, setAskLoading]     = useState(false);
   const [askError, setAskError]         = useState('');
 
-  useEffect(() => {
-    // Capture Google OAuth token from redirect URL
+  // Capture Google OAuth token synchronously before useSessionRestore's useEffect fires.
+  useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('google') === 'success') {
       const googleToken = params.get('token');
       if (googleToken) {
         saveToken(googleToken);
         try { window.history.replaceState(null, '', '/dashboard'); } catch {}
-        // Eagerly cache the backend user so md:me is never stale
-        ApiClient.getMe().then(me => {
-          try { localStorage.setItem('md:me', JSON.stringify(me)); } catch {}
-        }).catch(() => {});
       }
     }
+  }, []);
 
-    if (!getToken()) { setLoading(false); router.push('/login'); return; }
+  useEffect(() => {
+    if (checking) return;
     loadDashboard();
     ApiClient.getAIStatus().then(s => setAiMode(s.mode)).catch(() => setAiMode('offline'));
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking]);
 
   async function loadDashboard() {
     try {

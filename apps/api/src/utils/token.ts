@@ -7,9 +7,9 @@ export interface TokenPayload {
 }
 
 export function generateToken(payload: TokenPayload): string {
-  return jwt.sign(payload, config.jwtSecret, {
-    expiresIn: '7d',
-  });
+  // expiresIn expects StringValue from ms package; cast via unknown to satisfy the strict type.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return jwt.sign(payload, config.jwtSecret, { expiresIn: config.jwtExpiresIn as any });
 }
 
 export function verifyToken(token: string): TokenPayload | null {

@@ -132,6 +132,41 @@ Run through this checklist before every production release. Each item must pass 
 - [ ] `/api/auth/me` returns `id`, `_id`, `email`, `name`, `avatarUrl`, `authProvider`, `plan`, `subscriptionStatus`
 - [ ] No route throws `Cast to ObjectId failed` — UUID-bearing tokens are rejected with `INVALID_TOKEN` before reaching any controller
 
+---
+
+## Session persistence (Phase 1B)
+
+- [ ] After email/password login, close the browser tab entirely and reopen — user is still logged in, no re-authentication required
+- [ ] After Google OAuth login, close the browser tab entirely and reopen — user is still logged in
+- [ ] Logging out clears `mindpad_token` **and** `mindpad_me` from localStorage — no auth data remains
+- [ ] After logout, pressing the browser Back button does NOT re-enter a protected page (it shows /login or is blocked)
+- [ ] Visiting /dashboard with an **expired** or **invalid** JWT redirects to /login without a blank-page flash
+- [ ] If `/auth/me` returns a network error (5xx / offline), the user remains logged in with cached data — no premature logout
+- [ ] Legacy `token` localStorage key (from pre-Phase-1B sessions) is automatically migrated to `mindpad_token` on next page load — user stays logged in
+- [ ] Protected pages (/dashboard, /tasks, /brain-dump, /focus, /analytics, /settings, /team) all show a centered spinner while auth is being verified — no content flash before redirect
+- [ ] No protected page sends `Authorization: Bearer undefined` or `Bearer null` to the API
+
+---
+
+## Password reset & email verification (Phase 1)
+
+- [ ] Login page: "Forgot password?" link is visible inline with the Password label, links to /forgot-password
+- [ ] /forgot-password: submitting any email address (existing or not) shows the same success message (enumeration-safe)
+- [ ] /forgot-password: submitting shows success message — no "Invalid credentials" or server error shown
+- [ ] /reset-password?token=…: page loads, shows new password form
+- [ ] /reset-password: submitting a valid token + new password succeeds and redirects to /login
+- [ ] /reset-password: submitting an expired or invalid token shows a clear error (no stack trace)
+- [ ] Logging in with the **new** password after a reset works
+- [ ] Logging in with the **old** password after a reset is rejected
+- [ ] New email/password registrations: verification banner appears on /dashboard ("Please verify your email")
+- [ ] Google users: verification banner does **not** appear (Google emails are implicitly verified)
+- [ ] Verification banner: "Resend email" button sends a new verification email without page reload
+- [ ] Verification banner: can be dismissed (×) — stays dismissed for the session
+- [ ] Clicking the verification link from email marks account as verified; banner disappears on next visit
+- [ ] /settings Account card: "Email verified" badge shown for verified email users
+- [ ] /settings Account card: no "Email verified" badge for unverified users (banner shown instead)
+- [ ] After password reset, `emailVerified` is set to true (user does not need to re-verify)
+
 ## Build verification (run before every release)
 
 ```bash

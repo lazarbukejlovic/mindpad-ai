@@ -16,13 +16,13 @@ export function authMiddleware(
   const token = authHeader?.replace('Bearer ', '');
 
   if (!token) {
-    res.status(401).json({ error: 'Missing authorization token' });
+    res.status(401).json({ error: 'Missing authorization token', code: 'NO_TOKEN' });
     return;
   }
 
   const payload = verifyToken(token);
   if (!payload) {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ error: 'Invalid or expired token', code: 'INVALID_TOKEN' });
     return;
   }
 
