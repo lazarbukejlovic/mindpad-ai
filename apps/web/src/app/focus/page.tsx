@@ -519,9 +519,19 @@ export default function FocusPage() {
                       {dataLoading ? (
                         <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}><Spinner /></div>
                       ) : tasks.length === 0 ? (
-                        <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.7)', textAlign: 'center', padding: '16px 0' }}>
-                          No active tasks. You can still run a free focus session.
-                        </p>
+                        <div style={{ textAlign: 'center', padding: '20px 12px' }}>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(140,180,230,0.75)', marginBottom: 6 }}>No active tasks</p>
+                          <p style={{ fontSize: 12, color: 'rgba(70,100,140,0.75)', marginBottom: 12, lineHeight: 1.55 }}>
+                            Extract tasks from a brain dump first,<br />then pick the most important one to focus on.
+                          </p>
+                          <Link href="/brain-dump" style={{
+                            fontSize: 12, fontWeight: 600, color: '#40b8ff', textDecoration: 'none',
+                            padding: '6px 14px', borderRadius: 8,
+                            background: 'rgba(0,130,255,0.1)', border: '1px solid rgba(0,160,255,0.2)',
+                          }}>
+                            Brain dump → extract tasks →
+                          </Link>
+                        </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           <label style={{

@@ -21,6 +21,13 @@ export interface IUser extends Document {
   emailVerificationExpires?: Date;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  onboardingCompleted?: boolean;
+  onboardingGoal?: string;
+  onboardingStep?: string;
+  firstBrainDumpCompleted?: boolean;
+  firstTasksExtracted?: boolean;
+  firstFocusStarted?: boolean;
+  onboardingCompletedAt?: Date;
   createdAt: Date;
   comparePassword(password: string): Promise<boolean>;
 }
@@ -72,6 +79,13 @@ const userSchema = new Schema<IUser>(
     emailVerificationExpires: Date,
     passwordResetToken: String,
     passwordResetExpires: Date,
+    onboardingCompleted: { type: Boolean, default: false },
+    onboardingGoal: String,
+    onboardingStep: String,
+    firstBrainDumpCompleted: { type: Boolean, default: false },
+    firstTasksExtracted: { type: Boolean, default: false },
+    firstFocusStarted: { type: Boolean, default: false },
+    onboardingCompletedAt: Date,
   },
   {
     timestamps: true,

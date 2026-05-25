@@ -11,7 +11,7 @@ import {
 import { ApiClient } from '@/services/api';
 import { saveToken } from '@/lib/auth';
 import { useSessionRestore } from '@/hooks/useSessionRestore';
-import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief } from '@/types/index';
+import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief, OnboardingStatus } from '@/types/index';
 import { buildWorkspaceContext } from '@/lib/aiContext';
 import AppNav from '@/components/layout/AppNav';
 import KPICard from '@/components/ui/KPICard';
@@ -66,6 +66,54 @@ function PanelCard({ title, action, children, badge }: {
   );
 }
 
+function OnboardingChecklist({ onboarding }: { onboarding: OnboardingStatus }) {
+  const steps = [
+    { label: 'Choose your goal',           done: !!onboarding.onboardingGoal,         href: '/onboarding' },
+    { label: 'Add your first brain dump',  done: onboarding.firstBrainDumpCompleted,  href: '/brain-dump' },
+    { label: 'Extract first tasks',        done: onboarding.firstTasksExtracted,      href: '/brain-dump' },
+    { label: 'Start first focus session',  done: onboarding.firstFocusStarted,        href: '/focus' },
+    { label: 'Review your analytics',      done: false,                               href: '/analytics' },
+  ];
+  const completedCount = steps.filter(s => s.done).length;
+
+  return (
+    <div style={{
+      marginBottom: 24, padding: '16px 20px', borderRadius: '1rem',
+      background: 'rgba(0,80,180,0.07)', border: '1px solid rgba(0,160,255,0.15)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(160,200,240,0.9)' }}>Getting started</span>
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
+            background: 'rgba(0,130,255,0.12)', color: '#40b8ff',
+            border: '1px solid rgba(0,160,255,0.2)',
+          }}>{completedCount}/{steps.length}</span>
+        </div>
+        <Link href="/onboarding" style={{ fontSize: 11, color: 'rgba(80,120,170,0.7)', textDecoration: 'none' }}>
+          Continue setup →
+        </Link>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {steps.map((s, i) => (
+          <Link key={i} href={s.href} style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '5px 12px', borderRadius: 99, fontSize: 12, textDecoration: 'none',
+            background: s.done ? 'rgba(34,197,94,0.08)' : 'rgba(0,0,0,0.2)',
+            border: `1px solid ${s.done ? 'rgba(34,197,94,0.25)' : 'rgba(0,160,255,0.12)'}`,
+            color: s.done ? 'rgba(100,220,140,0.9)' : 'rgba(110,150,200,0.75)',
+          }}>
+            {s.done
+              ? <CheckCircle2 size={11} style={{ color: '#22c55e' }} />
+              : <span style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid rgba(0,160,255,0.4)', display: 'block' }} />}
+            {s.label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const SUGGESTED_QUESTIONS = [
   'What should I focus on first?',
   'Create a 3-hour execution plan',
@@ -84,6 +132,7 @@ export default function DashboardPage() {
   const [authProvider, setAuthProvider] = useState('');
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   const [error, setError]               = useState('');
+  const [onboarding, setOnboarding]     = useState<OnboardingStatus | null>(null);
 
   // AI status
   const [aiMode, setAiMode]             = useState<'ai' | 'offline' | null>(null);
@@ -112,8 +161,22 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (checking) return;
-    loadDashboard();
-    ApiClient.getAIStatus().then(s => setAiMode(s.mode)).catch(() => setAiMode('offline'));
+    // Check onboarding before loading — redirect new users immediately.
+    ApiClient.getOnboardingStatus()
+      .then(s => {
+        if (!s.onboardingCompleted && !s.hasExistingData) {
+          router.replace('/onboarding');
+          return;
+        }
+        setOnboarding(s);
+        loadDashboard();
+        ApiClient.getAIStatus().then(st => setAiMode(st.mode)).catch(() => setAiMode('offline'));
+      })
+      .catch(() => {
+        // If onboarding status unavailable, proceed to dashboard anyway.
+        loadDashboard();
+        ApiClient.getAIStatus().then(st => setAiMode(st.mode)).catch(() => setAiMode('offline'));
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checking]);
 
@@ -212,6 +275,11 @@ export default function DashboardPage() {
 
             {userEmail && emailVerified === false && authProvider !== 'google' && (
               <VerificationBanner email={userEmail} authProvider={authProvider} emailVerified={emailVerified} />
+            )}
+
+            {/* ── Onboarding checklist ── */}
+            {onboarding && !onboarding.onboardingCompleted && (
+              <OnboardingChecklist onboarding={onboarding} />
             )}
 
             {/* ── Header ── */}
@@ -598,7 +666,12 @@ export default function DashboardPage() {
                       }
                     >
                       {brainDumps.length === 0 ? (
-                        <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.7)', textAlign: 'center', padding: '16px 0' }}>No notes yet</p>
+                        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                          <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.7)', marginBottom: 8 }}>No notes yet</p>
+                          <Link href="/brain-dump" style={{ fontSize: 11, fontWeight: 600, color: '#40b8ff', textDecoration: 'none' }}>
+                            Start a brain dump →
+                          </Link>
+                        </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {brainDumps.map(dump => (

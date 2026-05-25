@@ -182,6 +182,16 @@ export interface TeamWorkspaceState {
   workspace?: TeamWorkspace;
 }
 
+export interface OnboardingStatus {
+  onboardingCompleted: boolean;
+  onboardingGoal: string | null;
+  firstBrainDumpCompleted: boolean;
+  firstTasksExtracted: boolean;
+  firstFocusStarted: boolean;
+  recommendedNextStep: string;
+  hasExistingData: boolean;
+}
+
 export interface TeamWeeklyReport {
   activitySummary: string;
   sharedPriorities: string[];

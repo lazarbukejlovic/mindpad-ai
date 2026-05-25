@@ -232,12 +232,23 @@ export default function AnalyticsPage() {
             {loading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}><Spinner size="lg" /></div>
             ) : !analytics ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '80px 0' }}>
-                <BarChart3 size={40} style={{ color: 'rgba(90,120,160,0.35)' }} />
-                <p style={{ fontSize: 15, fontWeight: 600, color: 'rgba(90,120,160,0.7)' }}>No analytics yet</p>
-                <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.5)', textAlign: 'center', maxWidth: 280 }}>
-                  Complete tasks and focus sessions to start seeing your productivity insights here.
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '80px 0', textAlign: 'center' }}>
+                <BarChart3 size={40} style={{ color: 'rgba(90,120,160,0.3)' }} />
+                <p style={{ fontSize: 15, fontWeight: 700, color: 'rgba(140,180,230,0.7)' }}>No data yet</p>
+                <p style={{ fontSize: 13, color: 'rgba(70,100,140,0.75)', lineHeight: 1.65, maxWidth: 300 }}>
+                  Start with a brain dump, extract your first tasks, and run a focus session.<br />
+                  Your productivity trends will appear here after your first session.
                 </p>
+                <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Link href="/brain-dump" style={{
+                    padding: '7px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                    background: 'rgba(0,130,255,0.1)', border: '1px solid rgba(0,160,255,0.2)', color: '#40b8ff',
+                  }}>Brain dump</Link>
+                  <Link href="/focus" style={{
+                    padding: '7px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                    background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(0,160,255,0.12)', color: 'rgba(100,150,200,0.8)',
+                  }}>Focus session</Link>
+                </div>
               </div>
             ) : (
               <>

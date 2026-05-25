@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck, CreditCard, Zap, Users, CheckCircle2, Lock, ChevronRight, MailCheck } from 'lucide-react';
+import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck, CreditCard, Zap, Users, CheckCircle2, Lock, ChevronRight, MailCheck, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { clearAuth } from '@/lib/auth';
@@ -79,6 +79,14 @@ function SettingsContent() {
   const [billingMsg, setBillingMsg]             = useState('');
   const [upgradeLoading, setUpgradeLoading]     = useState<'pro' | 'team' | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
+  const [restartingOnboarding, setRestartingOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (checking) return;
+    ApiClient.getOnboardingStatus().then(s => setOnboardingCompleted(s.onboardingCompleted)).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checking]);
 
   useEffect(() => {
     if (checking) return;
@@ -124,6 +132,17 @@ function SettingsContent() {
   function handleLogout() {
     clearAuth();
     router.push('/login');
+  }
+
+  async function handleRestartOnboarding() {
+    setRestartingOnboarding(true);
+    try {
+      await ApiClient.restartOnboarding();
+      setOnboardingCompleted(false);
+      router.push('/onboarding');
+    } catch {
+      setRestartingOnboarding(false);
+    }
   }
 
   async function handleUpgrade(plan: 'pro' | 'team') {
@@ -552,6 +571,30 @@ function SettingsContent() {
                   {exportMsg}
                 </div>
               )}
+            </SettingsCard>
+
+            {/* ── Onboarding ── */}
+            <SettingsCard title="Onboarding" icon={Brain}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: 'rgba(180,210,240,0.9)', marginBottom: 3 }}>
+                    {onboardingCompleted === false ? 'Onboarding in progress' : 'Onboarding complete'}
+                  </p>
+                  <p style={{ fontSize: 12, color: 'rgba(70,100,140,0.75)' }}>
+                    {onboardingCompleted === false
+                      ? 'Finish the guided setup to get the most out of MindPad AI.'
+                      : 'Restart the guided tour any time — your data will not be deleted.'}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={handleRestartOnboarding}
+                  disabled={restartingOnboarding}
+                >
+                  {restartingOnboarding ? <Spinner size="sm" /> : <RefreshCw size={14} />}
+                  {onboardingCompleted === false ? 'Continue setup' : 'Restart onboarding'}
+                </Button>
+              </div>
             </SettingsCard>
 
             {/* ── Danger Zone ── */}

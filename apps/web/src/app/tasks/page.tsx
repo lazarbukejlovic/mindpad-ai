@@ -486,22 +486,33 @@ export default function TasksPage() {
             {loading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '64px 0' }}><Spinner size="lg" /></div>
             ) : filtered.length === 0 ? (
-              <div style={{ ...panel, padding: '40px', textAlign: 'center' }}>
-                <CheckSquare size={28} style={{ margin: '0 auto 10px', color: 'rgba(0,160,255,0.25)' }} />
-                <p style={{ fontSize: 14, fontWeight: 600, color: 'rgba(180,210,240,0.7)', marginBottom: 6 }}>
+              <div style={{ ...panel, padding: '48px 32px', textAlign: 'center' }}>
+                <CheckSquare size={32} style={{ margin: '0 auto 14px', color: 'rgba(0,160,255,0.22)' }} />
+                <p style={{ fontSize: 15, fontWeight: 700, color: 'rgba(180,210,240,0.75)', marginBottom: 8 }}>
                   {tasks.length === 0 ? 'No tasks yet' : 'No matching tasks'}
                 </p>
-                <p style={{ fontSize: 13, color: 'rgba(70,100,140,0.7)' }}>
+                <p style={{ fontSize: 13, color: 'rgba(70,100,140,0.75)', lineHeight: 1.6, marginBottom: 18, maxWidth: 300, margin: '0 auto 18px' }}>
                   {tasks.length === 0
-                    ? 'Start by adding a task or extracting them from a brain dump.'
+                    ? 'Write a brain dump and let AI extract your next actions — or add a task manually.'
                     : 'Try a different filter or search term.'}
                 </p>
                 {tasks.length === 0 && (
-                  <button onClick={() => setCreating(true)} style={{
-                    marginTop: 14, padding: '8px 18px', borderRadius: 9,
-                    background: 'rgba(0,130,255,0.12)', border: '1px solid rgba(0,160,255,0.2)',
-                    color: '#40b8ff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  }}>Add your first task</button>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <Link href="/brain-dump" style={{
+                      padding: '8px 18px', borderRadius: 9,
+                      background: 'rgba(0,130,255,0.12)', border: '1px solid rgba(0,160,255,0.2)',
+                      color: '#40b8ff', fontSize: 13, fontWeight: 600, textDecoration: 'none',
+                    }}>
+                      Brain dump → extract tasks
+                    </Link>
+                    <button onClick={() => setCreating(true)} style={{
+                      padding: '8px 18px', borderRadius: 9,
+                      background: 'transparent', border: '1px solid rgba(0,160,255,0.15)',
+                      color: 'rgba(100,150,200,0.75)', fontSize: 13, cursor: 'pointer',
+                    }}>
+                      Add manually
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (

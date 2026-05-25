@@ -560,10 +560,13 @@ export default function BrainDumpPage() {
                     <Spinner />
                   </div>
                 ) : brainDumps.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '32px 0' }}>
-                    <Brain size={28} style={{ margin: '0 auto 10px', color: 'rgba(0,160,255,0.25)' }} />
-                    <p style={{ fontSize: 13, color: 'rgba(70,100,140,0.7)', marginBottom: 4 }}>No saved notes</p>
-                    <p style={{ fontSize: 12, color: 'rgba(50,80,120,0.6)' }}>Write your first brain dump above to get started.</p>
+                  <div style={{ textAlign: 'center', padding: '36px 16px' }}>
+                    <Brain size={30} style={{ margin: '0 auto 14px', color: 'rgba(0,160,255,0.22)' }} />
+                    <p style={{ fontSize: 14, fontWeight: 600, color: 'rgba(140,180,230,0.75)', marginBottom: 6 }}>No saved notes yet</p>
+                    <p style={{ fontSize: 12, color: 'rgba(60,90,130,0.75)', lineHeight: 1.6 }}>
+                      Write what's on your mind above — messy is fine.<br />
+                      Extract tasks to turn it into a clear action list.
+                    </p>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -167,6 +167,74 @@ Run through this checklist before every production release. Each item must pass 
 - [ ] /settings Account card: no "Email verified" badge for unverified users (banner shown instead)
 - [ ] After password reset, `emailVerified` is set to true (user does not need to re-verify)
 
+---
+
+## Onboarding (Phase 2)
+
+### New user flow
+- [ ] New email user (no data) is redirected to /onboarding after login — not to /dashboard
+- [ ] New Google user (no data) is redirected to /onboarding after login — not to /dashboard
+- [ ] Existing user (tasks or brain dumps or focus sessions in DB) goes directly to /dashboard — onboarding is skipped
+- [ ] Authenticated user who visits /onboarding directly when already onboarded is redirected to /dashboard
+
+### Step 1 — Goal selection
+- [ ] All 6 goal options render correctly
+- [ ] Clicking a goal saves it via PATCH /api/onboarding/status and advances to step 2
+- [ ] Progress bar advances from 0% to 25% after step 1
+
+### Step 2 — Brain dump
+- [ ] Starter buttons prefill the textarea with a useful template
+- [ ] All 5 starter button variants produce distinct, non-empty text
+- [ ] "Extract tasks" is disabled when textarea is empty
+- [ ] Submitting a non-empty dump calls POST /ai/organize and advances to step 3
+- [ ] Extraction quota limit (free plan) shows the normal upgrade prompt — does not crash
+- [ ] If AI is unavailable, offline extraction still returns tasks
+
+### Step 3 — Extraction results
+- [ ] Extracted tasks render with priority badges (High/Medium/Low)
+- [ ] First task is visually highlighted as the primary task
+- [ ] Focus recommendation panel is shown (if returned by AI)
+- [ ] "Add to task list" creates the tasks via POST /api/tasks/bulk and advances to step 4
+- [ ] firstBrainDumpCompleted and firstTasksExtracted are set to true in the DB
+
+### Step 4 — Focus recommendation
+- [ ] Suggested duration is 25 min for small tasks, 50 min for larger tasks
+- [ ] "Start first focus session" marks firstFocusStarted=true, calls POST /api/onboarding/complete, and redirects to /focus
+- [ ] "Skip for now" marks onboarding complete and redirects to /dashboard
+
+### Step 5 — Completion
+- [ ] Completion summary shows correct checked/unchecked state for each milestone
+- [ ] "Go to Dashboard" calls POST /api/onboarding/complete and redirects to /dashboard
+- [ ] onboardingCompleted is true in the DB after completion
+
+### Dashboard checklist
+- [ ] Users who have NOT completed onboarding see the "Getting started" checklist card on /dashboard
+- [ ] Checklist shows correct checked/unchecked state for each step
+- [ ] After completing onboarding, the checklist card disappears on next visit
+- [ ] "Continue setup →" link goes to /onboarding
+
+### Settings — onboarding section
+- [ ] Settings page shows an "Onboarding" card
+- [ ] "Restart onboarding" button calls POST /api/onboarding/restart and redirects to /onboarding
+- [ ] After restart, user data (tasks, brain dumps, focus sessions, billing) is NOT deleted
+- [ ] After restart, user is sent through onboarding again as if new
+
+### Empty states
+- [ ] /tasks with no tasks: shows "Brain dump → extract tasks" link and "Add manually" button
+- [ ] /brain-dump with no entries: shows descriptive empty state with guidance
+- [ ] /focus with no active tasks: shows link to brain dump flow
+- [ ] /analytics with no data: shows links to brain dump and focus pages
+- [ ] /dashboard with no brain dumps: "Start a brain dump →" link appears in Recent Notes
+
+### Regression (must still pass after Phase 2)
+- [ ] Stripe checkout and billing still work
+- [ ] Google login still works end-to-end
+- [ ] Password reset still works
+- [ ] Email verification still works
+- [ ] Persistent login (mindpad_token) still works across browser close/reopen
+- [ ] Free plan extraction limit is still enforced during onboarding
+- [ ] Pro/Team features still gated correctly
+
 ## Build verification (run before every release)
 
 ```bash

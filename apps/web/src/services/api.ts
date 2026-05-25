@@ -175,6 +175,44 @@ export class ApiClient {
     });
   }
 
+  // Onboarding
+  static getOnboardingStatus() {
+    return this.request<{
+      onboardingCompleted: boolean;
+      onboardingGoal: string | null;
+      firstBrainDumpCompleted: boolean;
+      firstTasksExtracted: boolean;
+      firstFocusStarted: boolean;
+      recommendedNextStep: string;
+      hasExistingData: boolean;
+    }>('/onboarding/status');
+  }
+
+  static updateOnboardingStatus(data: {
+    onboardingGoal?: string;
+    onboardingStep?: string;
+    firstBrainDumpCompleted?: boolean;
+    firstTasksExtracted?: boolean;
+    firstFocusStarted?: boolean;
+  }) {
+    return this.request<{ ok: boolean }>('/onboarding/status', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  static completeOnboarding() {
+    return this.request<{ ok: boolean }>('/onboarding/complete', {
+      method: 'POST',
+    });
+  }
+
+  static restartOnboarding() {
+    return this.request<{ ok: boolean }>('/onboarding/restart', {
+      method: 'POST',
+    });
+  }
+
   // Brain Dumps
   static createBrainDump(content: string) {
     return this.request<{

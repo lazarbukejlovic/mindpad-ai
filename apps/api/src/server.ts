@@ -14,6 +14,7 @@ import webhookRoutes from './routes/webhookRoutes';
 import teamRoutes from './routes/teamRoutes';
 import executionPlanRoutes from './routes/executionPlanRoutes';
 import reportsRoutes from './routes/reportsRoutes';
+import onboardingRoutes from './routes/onboardingRoutes';
 import { getAIStatus } from './services/aiService';
 
 const app = express();
@@ -41,6 +42,7 @@ app.use('/api/billing', authMiddleware, billingRoutes);
 app.use('/api/team', authMiddleware, teamRoutes);
 app.use('/api/execution-plans', authMiddleware, executionPlanRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
+app.use('/api/onboarding', authMiddleware, onboardingRoutes);
 
 // Public AI status — registered before authMiddleware covers /api/ai
 app.get('/api/ai/status', async (_req: express.Request, res: Response) => {
