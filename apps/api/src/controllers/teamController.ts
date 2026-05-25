@@ -44,16 +44,26 @@ function getPlan(user: { plan?: string }): Plan {
   return (user.plan as Plan) || 'free';
 }
 
+// Find the workspace that the user owns or is a member of.
+// Always returns the first match (a user belongs to at most one workspace).
+async function findWorkspaceForUser(userId: string) {
+  // Owner — most common case, fast indexed lookup
+  const owned = await TeamWorkspace.findOne({ ownerId: userId });
+  if (owned) return owned;
+  // Member — scan members array for this userId
+  return TeamWorkspace.findOne({ 'members.userId': userId });
+}
+
 function requireOwnerOrAdmin(workspace: { ownerId: string; members: ITeamMember[] }, userId: string) {
-  if (workspace.ownerId === userId) return;
-  const member = workspace.members.find(m => m.userId === userId);
+  if (String(workspace.ownerId) === String(userId)) return;
+  const member = workspace.members.find(m => String(m.userId) === String(userId));
   if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
     throw new Error('Only workspace owners and admins can perform this action');
   }
 }
 
 function requireOwner(workspace: { ownerId: string }, userId: string) {
-  if (workspace.ownerId !== userId) {
+  if (String(workspace.ownerId) !== String(userId)) {
     throw new Error('Only the workspace owner can perform this action');
   }
 }
@@ -68,15 +78,15 @@ function resolvedMembers(workspace: {
 }): ITeamMember[] {
   const result: ITeamMember[] = [...workspace.members];
 
-  // Ensure owner is present
-  if (!result.some(m => m.userId === workspace.ownerId)) {
-    result.unshift({ userId: workspace.ownerId, role: 'owner', joinedAt: workspace.createdAt });
+  // Ensure owner is present (compare as strings — ownerId may be ObjectId)
+  if (!result.some(m => String(m.userId) === String(workspace.ownerId))) {
+    result.unshift({ userId: String(workspace.ownerId), role: 'owner', joinedAt: workspace.createdAt });
   }
 
   // Migrate legacy memberIds not already in the array
   for (const uid of workspace.memberIds) {
-    if (!result.some(m => m.userId === uid)) {
-      result.push({ userId: uid, role: 'member', joinedAt: workspace.createdAt });
+    if (!result.some(m => String(m.userId) === String(uid))) {
+      result.push({ userId: String(uid), role: 'member', joinedAt: workspace.createdAt });
     }
   }
 
@@ -110,6 +120,7 @@ async function addActivityEntry(
 async function serializeWorkspace(
   workspace: InstanceType<typeof TeamWorkspace>,
   plan: Plan,
+  currentUserId?: string,
 ) {
   const allMembers = resolvedMembers(workspace);
 
@@ -138,10 +149,22 @@ async function serializeWorkspace(
     expiresAt: { $gt: new Date() },
   }).select('-tokenHash').lean();
 
+  // Determine the calling user's role in this workspace
+  let currentUserRole: TeamRole = 'member';
+  if (currentUserId) {
+    if (String(workspace.ownerId) === String(currentUserId)) {
+      currentUserRole = 'owner';
+    } else {
+      const found = allMembers.find(m => String(m.userId) === String(currentUserId));
+      if (found) currentUserRole = found.role;
+    }
+  }
+
   return {
     id: workspace._id.toString(),
     name: workspace.name,
-    ownerId: workspace.ownerId,
+    ownerId: String(workspace.ownerId),
+    currentUserRole,
     members: enrichedMembers,
     pendingInvites: pendingInvites.map(inv => ({
       id: String(inv._id),
@@ -167,7 +190,7 @@ export async function getTeamWorkspace(userId: string) {
   const plan = getPlan(user);
   const entitlements = PLAN_CONFIG[plan];
 
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) {
     return { exists: false, plan, entitlements, upgradeRequired: false };
   }
@@ -177,7 +200,7 @@ export async function getTeamWorkspace(userId: string) {
     plan,
     entitlements,
     upgradeRequired: false,
-    workspace: await serializeWorkspace(workspace, plan),
+    workspace: await serializeWorkspace(workspace, plan, userId),
   };
 }
 
@@ -185,8 +208,9 @@ export async function createTeamWorkspace(userId: string, name: string) {
   const user = await getUser(userId);
   const plan = getPlan(user);
 
-  const existing = await TeamWorkspace.findOne({ ownerId: userId });
-  if (existing) throw new Error('Team workspace already exists');
+  // Block if user already owns or belongs to a workspace
+  const existing = await findWorkspaceForUser(userId);
+  if (existing) throw new Error('You already belong to a team workspace.');
 
   const workspace = new TeamWorkspace({
     ownerId: userId,
@@ -201,14 +225,14 @@ export async function createTeamWorkspace(userId: string, name: string) {
   await addActivityEntry(workspace, userId, `Workspace "${name}" created`);
   await workspace.save();
 
-  return serializeWorkspace(workspace, plan);
+  return serializeWorkspace(workspace, plan, userId);
 }
 
 export async function updateTeamWorkspace(userId: string, updates: { name?: string }) {
   const user = await getUser(userId);
   const plan = getPlan(user);
 
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Team workspace not found');
   requireOwnerOrAdmin(workspace, userId);
 
@@ -218,7 +242,7 @@ export async function updateTeamWorkspace(userId: string, updates: { name?: stri
   }
   await workspace.save();
 
-  return serializeWorkspace(workspace, plan);
+  return serializeWorkspace(workspace, plan, userId);
 }
 
 export async function createInvite(userId: string, email: string, role: TeamRole = 'member') {
@@ -226,7 +250,7 @@ export async function createInvite(userId: string, email: string, role: TeamRole
   const plan = getPlan(user);
   const { maxTeamMembers } = PLAN_CONFIG[plan];
 
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Create a workspace first before inviting members.');
   requireOwnerOrAdmin(workspace, userId);
 
@@ -347,15 +371,15 @@ export async function acceptInvite(rawToken: string, userId: string) {
   const workspace = await TeamWorkspace.findById(invite.teamId);
   if (!workspace) throw new Error('Workspace no longer exists.');
 
-  // Check not already a member
+  // Check not already a member (string comparison)
   const allMembers = resolvedMembers(workspace);
-  if (allMembers.some(m => m.userId === userId)) {
+  if (allMembers.some(m => String(m.userId) === String(userId))) {
     throw new Error('You are already a member of this workspace.');
   }
 
-  // Add member to workspace
-  workspace.members = allMembers; // persist migrated state
-  workspace.members.push({ userId, role: invite.role, joinedAt: new Date() });
+  // Add member to workspace — persist migrated state first
+  workspace.members = allMembers;
+  workspace.members.push({ userId: String(userId), role: invite.role, joinedAt: new Date() });
 
   invite.acceptedAt = new Date();
   await invite.save();
@@ -367,7 +391,7 @@ export async function acceptInvite(rawToken: string, userId: string) {
 }
 
 export async function revokeInvite(userId: string, inviteId: string) {
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Workspace not found.');
   requireOwnerOrAdmin(workspace, userId);
 
@@ -390,7 +414,7 @@ export async function revokeInvite(userId: string, inviteId: string) {
 
 export async function regenerateInvite(userId: string, inviteId: string) {
   const user = await getUser(userId);
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Workspace not found.');
   requireOwnerOrAdmin(workspace, userId);
 
@@ -440,18 +464,18 @@ export async function updateMemberRole(userId: string, targetUserId: string, rol
 
   const user = await getUser(userId);
   const plan = getPlan(user);
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Workspace not found.');
   requireOwner(workspace, userId);
 
-  if (targetUserId === userId) throw new Error('You cannot change your own role.');
+  if (String(targetUserId) === String(userId)) throw new Error('You cannot change your own role.');
 
   const allMembers = resolvedMembers(workspace);
-  const target = allMembers.find(m => m.userId === targetUserId);
+  const target = allMembers.find(m => String(m.userId) === String(targetUserId));
   if (!target) throw new Error('Member not found in workspace.');
 
   workspace.members = allMembers.map(m =>
-    m.userId === targetUserId ? { ...m, role } : m,
+    String(m.userId) === String(targetUserId) ? { ...m, role } : m,
   );
 
   const targetUser = await User.findById(targetUserId).select('name email').lean();
@@ -459,38 +483,38 @@ export async function updateMemberRole(userId: string, targetUserId: string, rol
   await addActivityEntry(workspace, userId, `Changed ${targetName}'s role to ${role}`);
   await workspace.save();
 
-  return serializeWorkspace(workspace, plan);
+  return serializeWorkspace(workspace, plan, userId);
 }
 
 export async function removeMember(userId: string, targetUserId: string) {
-  if (targetUserId === userId) throw new Error('You cannot remove yourself from the workspace.');
+  if (String(targetUserId) === String(userId)) throw new Error('You cannot remove yourself from the workspace.');
 
   const user = await getUser(userId);
   const plan = getPlan(user);
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Workspace not found.');
   requireOwnerOrAdmin(workspace, userId);
 
   const allMembers = resolvedMembers(workspace);
-  const target = allMembers.find(m => m.userId === targetUserId);
+  const target = allMembers.find(m => String(m.userId) === String(targetUserId));
   if (!target) throw new Error('Member not found in workspace.');
   if (target.role === 'owner') throw new Error('Cannot remove the workspace owner.');
 
-  workspace.members = allMembers.filter(m => m.userId !== targetUserId);
+  workspace.members = allMembers.filter(m => String(m.userId) !== String(targetUserId));
 
   const targetUser = await User.findById(targetUserId).select('name email').lean();
   const targetName = targetUser?.name || targetUser?.email || targetUserId;
   await addActivityEntry(workspace, userId, `Removed ${targetName} from workspace`);
   await workspace.save();
 
-  return serializeWorkspace(workspace, plan);
+  return serializeWorkspace(workspace, plan, userId);
 }
 
 export async function addSharedProject(userId: string, name: string, description: string) {
   const user = await getUser(userId);
   const plan = getPlan(user);
 
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Team workspace not found. Create one first.');
   requireOwnerOrAdmin(workspace, userId);
 
@@ -512,7 +536,7 @@ export async function deleteSharedProject(userId: string, projectId: string) {
   const user = await getUser(userId);
   const plan = getPlan(user);
 
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Team workspace not found');
   requireOwnerOrAdmin(workspace, userId);
 
@@ -542,7 +566,7 @@ export async function generateTeamWeeklyReport(userId: string): Promise<{
     throw new PlanError('Team weekly reports require a Team plan', 'TEAM_PLAN_REQUIRED', 'team');
   }
 
-  const workspace = await TeamWorkspace.findOne({ ownerId: userId });
+  const workspace = await findWorkspaceForUser(userId);
   if (!workspace) throw new Error('Team workspace not found');
 
   const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);

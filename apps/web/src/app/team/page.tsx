@@ -313,8 +313,10 @@ export default function TeamPage() {
   const plan = state?.plan || 'free';
   const maxMembers = ws?.maxMembers ?? state?.entitlements?.maxTeamMembers ?? 1;
   const usedSlots = (ws?.memberCount ?? 0) + (ws?.pendingInvites?.length ?? 0);
-  const canInvite = usedSlots < maxMembers;
-  const isOwner = ws && (ws.ownerId === ws.members?.find(m => m.role === 'owner')?.userId);
+  const currentUserRole = ws?.currentUserRole ?? 'member';
+  const isOwner = currentUserRole === 'owner';
+  const isOwnerOrAdmin = currentUserRole === 'owner' || currentUserRole === 'admin';
+  const canInvite = isOwnerOrAdmin && usedSlots < maxMembers;
 
   if (loading) return (
     <div className="min-h-screen" style={{ background: 'rgb(3, 6, 14)', position: 'relative' }}>
@@ -437,16 +439,21 @@ export default function TeamPage() {
                 {/* Workspace Name */}
                 <div style={panel}>
                   <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Workspace</span>
-                    <button
-                      onClick={() => setEditingName(v => !v)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(80,110,160,0.7)', background: 'none', border: 'none', cursor: 'pointer' }}
-                    >
-                      <Pencil size={12} />{editingName ? 'Cancel' : 'Rename'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Workspace</span>
+                      <RoleBadge role={currentUserRole} />
+                    </div>
+                    {isOwnerOrAdmin && (
+                      <button
+                        onClick={() => setEditingName(v => !v)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(80,110,160,0.7)', background: 'none', border: 'none', cursor: 'pointer' }}
+                      >
+                        <Pencil size={12} />{editingName ? 'Cancel' : 'Rename'}
+                      </button>
+                    )}
                   </div>
                   <div style={{ padding: '16px 20px 20px' }}>
-                    {editingName ? (
+                    {isOwnerOrAdmin && editingName ? (
                       <form onSubmit={handleRename} style={{ display: 'flex', gap: 10 }}>
                         <input
                           value={workspaceName}
@@ -523,9 +530,9 @@ export default function TeamPage() {
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                             <RoleBadge role={member.role} />
-                            {member.role !== 'owner' && (
+                            {/* Role change + remove: owner only, not for own row */}
+                            {isOwner && member.role !== 'owner' && (
                               <div style={{ display: 'flex', gap: 4 }}>
-                                {/* Role change: only owner can change roles */}
                                 <select
                                   value={member.role}
                                   onChange={e => handleRoleChange(member.userId, e.target.value as TeamRole)}
@@ -605,8 +612,8 @@ export default function TeamPage() {
                   </div>
                 </div>
 
-                {/* Pending Invites */}
-                {(ws.pendingInvites?.length ?? 0) > 0 && (
+                {/* Pending Invites — only owners/admins see this panel */}
+                {isOwnerOrAdmin && (ws.pendingInvites?.length ?? 0) > 0 && (
                   <div style={panel}>
                     <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)', display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Link2 size={14} style={{ color: '#40b8ff' }} />
@@ -679,19 +686,21 @@ export default function TeamPage() {
                         Shared Projects <span style={{ fontSize: 12, fontWeight: 400, color: 'rgba(70,100,140,0.7)', marginLeft: 4 }}>({(ws.sharedProjects ?? []).length})</span>
                       </span>
                     </div>
-                    <button
-                      onClick={() => setShowProjectForm(v => !v)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600,
-                        padding: '5px 10px', borderRadius: 7, cursor: 'pointer',
-                        background: showProjectForm ? 'rgba(220,38,38,0.08)' : 'rgba(0,100,200,0.1)',
-                        border: `1px solid ${showProjectForm ? 'rgba(220,38,38,0.2)' : 'rgba(0,160,255,0.2)'}`,
-                        color: showProjectForm ? '#fc8181' : '#40b8ff',
-                      }}
-                    >
-                      <Plus size={12} style={{ transform: showProjectForm ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s' }} />
-                      {showProjectForm ? 'Cancel' : 'Add Project'}
-                    </button>
+                    {isOwnerOrAdmin && (
+                      <button
+                        onClick={() => setShowProjectForm(v => !v)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600,
+                          padding: '5px 10px', borderRadius: 7, cursor: 'pointer',
+                          background: showProjectForm ? 'rgba(220,38,38,0.08)' : 'rgba(0,100,200,0.1)',
+                          border: `1px solid ${showProjectForm ? 'rgba(220,38,38,0.2)' : 'rgba(0,160,255,0.2)'}`,
+                          color: showProjectForm ? '#fc8181' : '#40b8ff',
+                        }}
+                      >
+                        <Plus size={12} style={{ transform: showProjectForm ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s' }} />
+                        {showProjectForm ? 'Cancel' : 'Add Project'}
+                      </button>
+                    )}
                   </div>
                   <div style={{ padding: '16px 20px 20px' }}>
                     {showProjectForm && (
@@ -748,12 +757,14 @@ export default function TeamPage() {
                                 </p>
                               </div>
                             </div>
-                            <button
-                              onClick={() => handleDeleteProject(project.id)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(90,120,160,0.35)', padding: 4, flexShrink: 0 }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                            {isOwnerOrAdmin && (
+                              <button
+                                onClick={() => handleDeleteProject(project.id)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(90,120,160,0.35)', padding: 4, flexShrink: 0 }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>

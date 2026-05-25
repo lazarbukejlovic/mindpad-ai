@@ -187,6 +187,7 @@ export interface TeamWorkspace {
   id: string;
   name: string;
   ownerId: string;
+  currentUserRole: TeamRole;
   members: TeamMember[];
   pendingInvites: TeamPendingInvite[];
   memberCount: number;
