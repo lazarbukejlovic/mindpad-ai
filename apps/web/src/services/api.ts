@@ -862,4 +862,39 @@ export class ApiClient {
       };
     });
   }
+
+  // Calendar
+  static getCalendarStatus() {
+    return this.request<{ connected: boolean; googleEmail: string | null; requiresReconnect: boolean }>(
+      '/calendar/status'
+    ).catch(() => ({ connected: false, googleEmail: null, requiresReconnect: false }));
+  }
+
+  static getCalendarConnectUrl() {
+    return this.request<{ url: string }>('/calendar/google/start');
+  }
+
+  static disconnectCalendar() {
+    return this.request<{ message: string }>('/calendar/disconnect', { method: 'POST' });
+  }
+
+  static createCalendarFocusBlock(data: {
+    title: string;
+    taskId?: string;
+    startDateTime: string;
+    durationMinutes: 25 | 50 | 90;
+    notes?: string;
+    timezone?: string;
+  }) {
+    return this.request<{
+      eventId: string;
+      htmlLink: string | null;
+      start: string;
+      end: string;
+      message: string;
+    }>('/calendar/focus-block', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, 15000);
+  }
 }

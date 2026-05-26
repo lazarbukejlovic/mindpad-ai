@@ -111,6 +111,16 @@ export default function AiDataNoticePage() {
         </div>
 
         <div style={section}>
+          <h2 style={h2Style}>Google Calendar integration</h2>
+          <p style={p}>Google Calendar integration is entirely optional. MindPad AI only accesses your Google Calendar when you explicitly connect it from the Settings page.</p>
+          <ul>
+            <li style={li}>The only action MindPad AI takes with your calendar is creating focus session events that you schedule within the app.</li>
+            <li style={li}>MindPad AI does not read, analyze, or share your calendar events, contacts, or any other Google account data.</li>
+            <li style={li}>You can disconnect Google Calendar at any time from Settings, which immediately removes the integration.</li>
+          </ul>
+        </div>
+
+        <div style={section}>
           <h2 style={h2Style}>Your control</h2>
           <p style={p}>AI processing only occurs when you explicitly trigger an AI feature. Saving a brain dump without organizing it, or managing tasks manually, does not send any data to the AI service. You are always in control of when AI is invoked.</p>
         </div>

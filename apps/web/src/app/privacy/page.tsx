@@ -85,27 +85,38 @@ export default function PrivacyPage() {
         </div>
 
         <div style={section}>
-          <h2 style={h2Style}>4. Payment processing</h2>
+          <h2 style={h2Style}>4. Google Calendar integration</h2>
+          <p style={p}>Google Calendar integration is optional and only activated when you choose to connect it from the Settings page.</p>
+          <ul>
+            <li style={li}>MindPad AI requests permission to create calendar events on your behalf. This permission is used only to add focus sessions you schedule from within the app.</li>
+            <li style={li}>MindPad AI does not read your existing calendar events, contacts, or any other data from your Google account.</li>
+            <li style={li}>Calendar access tokens are encrypted before storage and are never exposed to the frontend or logged.</li>
+            <li style={li}>You can disconnect Google Calendar at any time from Settings. Disconnecting removes the integration immediately.</li>
+          </ul>
+        </div>
+
+        <div style={section}>
+          <h2 style={h2Style}>6. Payment processing</h2>
           <p style={p}>All payment transactions are handled by Stripe, a PCI-compliant payment processor. MindPad AI never receives or stores your full card number, CVV, or bank account details. Stripe's privacy policy governs how your payment data is handled.</p>
         </div>
 
         <div style={section}>
-          <h2 style={h2Style}>5. Data retention</h2>
+          <h2 style={h2Style}>7. Data retention</h2>
           <p style={p}>Your account and content are retained for as long as your account is active. If you delete your account, your data will be removed from our systems within 30 days, except where retention is required by law or to resolve disputes.</p>
         </div>
 
         <div style={section}>
-          <h2 style={h2Style}>6. Your rights</h2>
+          <h2 style={h2Style}>8. Your rights</h2>
           <p style={p}>You can export your data, update your account information, or request account deletion at any time through the Settings page or by contacting us. Depending on your jurisdiction, you may have additional rights under applicable data protection law.</p>
         </div>
 
         <div style={section}>
-          <h2 style={h2Style}>7. Cookies and local storage</h2>
+          <h2 style={h2Style}>9. Cookies and local storage</h2>
           <p style={p}>MindPad AI stores your session token in browser local storage to keep you logged in. We do not use third-party advertising cookies. Basic, session-level data may be stored in cookies for authentication purposes.</p>
         </div>
 
         <div style={section}>
-          <h2 style={h2Style}>8. Contact</h2>
+          <h2 style={h2Style}>10. Contact</h2>
           <p style={p}>If you have questions about this policy or your data, contact us at the email address listed in your account settings or on the MindPad AI website.</p>
         </div>
       </main>

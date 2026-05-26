@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Timer, Play, Pause, RotateCcw, CheckCircle2, Flame, AlertCircle, Sparkles, Zap, Target, BookMarked, Plus, Trash2, Lock } from 'lucide-react';
+import { Timer, Play, Pause, RotateCcw, CheckCircle2, Flame, AlertCircle, Sparkles, Zap, Target, BookMarked, Plus, Trash2, Lock, CalendarDays, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { useSessionRestore } from '@/hooks/useSessionRestore';
-import { FocusSession, Task, FocusRecommendation, SavedExecutionPlan } from '@/types/index';
+import { FocusSession, Task, FocusRecommendation, SavedExecutionPlan, CalendarStatus, CalendarFocusBlockResult } from '@/types/index';
 import { buildWorkspaceContext } from '@/lib/aiContext';
 import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
@@ -93,6 +93,11 @@ export default function FocusPage() {
   const [sessionError, setSessionError] = useState('');
   const [recommendation, setRecommendation] = useState<FocusRecommendation | null>(null);
   const [recLoading, setRecLoading]     = useState(false);
+  const [calendarStatus, setCalendarStatus]   = useState<CalendarStatus | null>(null);
+  const [calStartTime, setCalStartTime]       = useState('');
+  const [calScheduling, setCalScheduling]     = useState(false);
+  const [calResult, setCalResult]             = useState<CalendarFocusBlockResult | null>(null);
+  const [calError, setCalError]               = useState('');
 
   // Saved Execution Plans
   const [savedPlans, setSavedPlans]     = useState<SavedExecutionPlan[]>([]);
@@ -110,6 +115,7 @@ export default function FocusPage() {
     if (checking) return;
     loadData();
     if (canSavePlans) loadSavedPlans();
+    ApiClient.getCalendarStatus().then(s => setCalendarStatus(s)).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checking, canSavePlans]);
 
@@ -197,6 +203,41 @@ export default function FocusPage() {
       if (rec) setRecommendation(rec);
     } catch { /* silent */ }
     finally { setRecLoading(false); }
+  }
+
+  function defaultStartTime() {
+    const d = new Date(Date.now() + 5 * 60_000);
+    return d.toISOString().slice(0, 16);
+  }
+
+  async function handleScheduleCalendar() {
+    const title = selectedTaskObj?.title || 'Focus session';
+    const startDateTime = calStartTime || defaultStartTime();
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    setCalScheduling(true);
+    setCalResult(null);
+    setCalError('');
+    try {
+      const result = await ApiClient.createCalendarFocusBlock({
+        title,
+        taskId: selectedTask,
+        startDateTime,
+        durationMinutes: duration as 25 | 50 | 90,
+        timezone: tz,
+      });
+      setCalResult(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('Pro and Team')) {
+        setCalError('Calendar scheduling is available on Pro and Team plans.');
+      } else if (msg.includes('reconnect')) {
+        setCalError('Please reconnect Google Calendar in Settings.');
+      } else {
+        setCalError('Could not schedule this focus block. Try again.');
+      }
+    } finally {
+      setCalScheduling(false);
+    }
   }
 
   async function handleStart() {
@@ -603,6 +644,106 @@ export default function FocusPage() {
                           </Badge>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Schedule in Calendar ── */}
+                {phase === 'setup' && (
+                  <div style={panel}>
+                    <div style={{
+                      padding: '12px 16px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+                      display: 'flex', alignItems: 'center', gap: 7,
+                    }}>
+                      <CalendarDays size={13} style={{ color: '#40b8ff' }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Schedule in Calendar</span>
+                    </div>
+                    <div style={{ padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {calResult ? (
+                        <div>
+                          <p style={{ fontSize: 12, color: 'rgba(100,220,160,0.9)', fontWeight: 600, marginBottom: 6 }}>
+                            Focus block added to Google Calendar.
+                          </p>
+                          {calResult.htmlLink && (
+                            <a href={calResult.htmlLink} target="_blank" rel="noreferrer" style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 5,
+                              fontSize: 11, color: '#40b8ff', textDecoration: 'none', fontWeight: 600,
+                            }}>
+                              Open in Google Calendar <ExternalLink size={10} />
+                            </a>
+                          )}
+                          <button onClick={() => setCalResult(null)} style={{
+                            display: 'block', marginTop: 8, fontSize: 10,
+                            color: 'rgba(80,110,160,0.6)', background: 'none', border: 'none', cursor: 'pointer',
+                          }}>
+                            Schedule another
+                          </button>
+                        </div>
+                      ) : !calendarStatus?.connected ? (
+                        <div>
+                          <p style={{ fontSize: 11, color: 'rgba(90,120,160,0.75)', marginBottom: 8, lineHeight: 1.5 }}>
+                            Connect Google Calendar to schedule focus blocks directly.
+                          </p>
+                          <Link href="/settings" style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            fontSize: 11, fontWeight: 600, color: '#40b8ff', textDecoration: 'none',
+                            padding: '5px 12px', borderRadius: 7,
+                            background: 'rgba(0,130,255,0.1)', border: '1px solid rgba(0,160,255,0.2)',
+                          }}>
+                            <CalendarDays size={11} /> Connect Calendar →
+                          </Link>
+                        </div>
+                      ) : calendarStatus.requiresReconnect ? (
+                        <div>
+                          <p style={{ fontSize: 11, color: 'rgba(252,200,100,0.85)', marginBottom: 8 }}>
+                            Your calendar connection needs to be refreshed.
+                          </p>
+                          <Link href="/settings" style={{
+                            fontSize: 11, fontWeight: 600, color: '#40b8ff', textDecoration: 'none',
+                          }}>
+                            Reconnect in Settings →
+                          </Link>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 10, color: 'rgba(80,110,160,0.7)', letterSpacing: '0.06em', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+                              Start time
+                            </label>
+                            <input
+                              type="datetime-local"
+                              value={calStartTime}
+                              onChange={e => setCalStartTime(e.target.value)}
+                              style={{
+                                width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 12,
+                                background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(0,160,255,0.15)',
+                                color: 'rgba(180,210,240,0.9)', outline: 'none',
+                                colorScheme: 'dark',
+                              }}
+                            />
+                          </div>
+                          <p style={{ fontSize: 10, color: 'rgba(70,100,140,0.65)' }}>
+                            Duration: <strong style={{ color: 'rgba(140,180,230,0.8)' }}>{duration} min</strong> (matches timer selection)
+                          </p>
+                          {calError && (
+                            <p style={{ fontSize: 11, color: 'rgba(252,165,165,0.85)' }}>{calError}</p>
+                          )}
+                          <button
+                            onClick={handleScheduleCalendar}
+                            disabled={calScheduling}
+                            style={{
+                              padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                              background: calScheduling ? 'rgba(0,80,160,0.15)' : 'rgba(0,100,200,0.15)',
+                              border: '1px solid rgba(0,160,255,0.25)',
+                              color: calScheduling ? 'rgba(80,130,200,0.5)' : 'rgba(100,180,255,0.9)',
+                              cursor: calScheduling ? 'default' : 'pointer',
+                              transition: 'all 0.15s',
+                            }}
+                          >
+                            {calScheduling ? 'Scheduling…' : 'Add to Calendar'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

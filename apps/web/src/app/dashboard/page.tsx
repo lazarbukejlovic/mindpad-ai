@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   ListTodo, CheckCircle2, CalendarDays, Clock,
   Sparkles, Brain, Timer, ArrowRight, Flame, Zap,
-  Send, MessageSquare, ChevronRight, Users, Target, TrendingUp,
+  Send, MessageSquare, ChevronRight, Users, Target, TrendingUp, ExternalLink,
 } from 'lucide-react';
 import { ApiClient } from '@/services/api';
 import { saveToken } from '@/lib/auth';
@@ -161,6 +161,9 @@ export default function DashboardPage() {
   // Billing alert (non-blocking, best-effort)
   const [billingAlert, setBillingAlert] = useState<{ type: 'warning' | 'danger'; msg: string } | null>(null);
 
+  // Calendar (non-blocking, best-effort)
+  const [calendarConnected, setCalendarConnected] = useState(false);
+
   // Capture Google OAuth token synchronously before useSessionRestore's useEffect fires.
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -194,6 +197,7 @@ export default function DashboardPage() {
         loadDashboard();
         ApiClient.getAIStatus().then(st => setAiMode(st.mode)).catch(() => setAiMode('offline'));
         ApiClient.getTeamWorkspace().then(ts => { if (ts.exists) setTeamState(ts); }).catch(() => {});
+        ApiClient.getCalendarStatus().then(s => setCalendarConnected(s.connected && !s.requiresReconnect)).catch(() => {});
         ApiClient.getBillingStatus().then(b => {
           if (b.subscriptionStatus === 'past_due' || b.subscriptionStatus === 'unpaid') {
             setBillingAlert({ type: 'danger', msg: 'Your payment is past due. Please update your payment method to keep access.' });
@@ -208,6 +212,7 @@ export default function DashboardPage() {
         loadDashboard();
         ApiClient.getAIStatus().then(st => setAiMode(st.mode)).catch(() => setAiMode('offline'));
         ApiClient.getTeamWorkspace().then(ts => { if (ts.exists) setTeamState(ts); }).catch(() => {});
+        ApiClient.getCalendarStatus().then(s => setCalendarConnected(s.connected && !s.requiresReconnect)).catch(() => {});
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checking]);
@@ -826,6 +831,16 @@ export default function DashboardPage() {
                             transition: 'background 0.15s',
                           }}>
                             <Timer size={12} /> Start {nextAction.estimatedFocusTime}-min session
+                          </Link>
+
+                          {/* Schedule in Calendar CTA */}
+                          <Link href={calendarConnected ? '/focus' : '/settings'} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                            padding: '7px 0', borderRadius: 9, textDecoration: 'none',
+                            background: 'rgba(0,100,40,0.08)', border: '1px solid rgba(0,160,80,0.18)',
+                            fontSize: 11, fontWeight: 600, color: 'rgba(80,200,140,0.85)',
+                          }}>
+                            <CalendarDays size={11} /> {calendarConnected ? 'Schedule in Calendar →' : 'Connect Calendar'}
                           </Link>
                         </div>
                       )}

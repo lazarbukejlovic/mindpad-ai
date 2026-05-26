@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck, CreditCard, Zap, Users, CheckCircle2, Lock, ChevronRight, MailCheck, RefreshCw } from 'lucide-react';
+import { Settings, Download, LogOut, Bot, Sparkles, Brain, ShieldCheck, CreditCard, Zap, Users, CheckCircle2, Lock, ChevronRight, MailCheck, RefreshCw, CalendarDays, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { clearAuth } from '@/lib/auth';
@@ -83,6 +83,9 @@ function SettingsContent() {
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
   const [restartingOnboarding, setRestartingOnboarding] = useState(false);
   const [teamWorkspace, setTeamWorkspace]               = useState<import('@/types/index').TeamWorkspace | null>(null);
+  const [calendarStatus, setCalendarStatus]             = useState<import('@/types/index').CalendarStatus | null>(null);
+  const [calendarMsg, setCalendarMsg]                   = useState('');
+  const [calendarLoading, setCalendarLoading]           = useState(false);
 
   useEffect(() => {
     if (checking) return;
@@ -115,6 +118,18 @@ function SettingsContent() {
     ApiClient.getTeamWorkspace()
       .then(ts => { if (ts.exists && ts.workspace) setTeamWorkspace(ts.workspace); })
       .catch(() => {});
+
+    ApiClient.getCalendarStatus()
+      .then(s => setCalendarStatus(s))
+      .catch(() => {});
+
+    const calendarParam = searchParams.get('calendar');
+    if (calendarParam === 'connected') {
+      setCalendarMsg('Calendar connected.');
+      ApiClient.getCalendarStatus().then(s => setCalendarStatus(s)).catch(() => {});
+    } else if (calendarParam === 'failed') {
+      setCalendarMsg('Calendar connection failed. Please try again.');
+    }
 
     const billingParam = searchParams.get('billing');
     if (billingParam === 'success') setBillingMsg('Your plan has been upgraded successfully.');
@@ -186,6 +201,32 @@ function SettingsContent() {
       setBillingMsg('Could not refresh billing status. Please try again.');
     } finally {
       setSyncLoading(false);
+    }
+  }
+
+  async function handleCalendarConnect() {
+    setCalendarLoading(true);
+    setCalendarMsg('');
+    try {
+      const { url } = await ApiClient.getCalendarConnectUrl();
+      window.location.href = url;
+    } catch {
+      setCalendarMsg('Could not start calendar connection. Try again.');
+      setCalendarLoading(false);
+    }
+  }
+
+  async function handleCalendarDisconnect() {
+    setCalendarLoading(true);
+    setCalendarMsg('');
+    try {
+      await ApiClient.disconnectCalendar();
+      setCalendarStatus({ connected: false, googleEmail: null, requiresReconnect: false });
+      setCalendarMsg('Calendar disconnected.');
+    } catch {
+      setCalendarMsg('Could not disconnect calendar. Try again.');
+    } finally {
+      setCalendarLoading(false);
     }
   }
 
@@ -571,6 +612,64 @@ function SettingsContent() {
                   }}>
                     <Users size={12} /> Set up workspace <ChevronRight size={11} />
                   </Link>
+                </div>
+              )}
+            </SettingsCard>
+
+            {/* ── Google Calendar ── */}
+            <SettingsCard title="Google Calendar" icon={CalendarDays}>
+              {calendarMsg && (
+                <div style={{
+                  marginBottom: 14, padding: '10px 14px', borderRadius: 10, fontSize: 13,
+                  background: calendarMsg.includes('connected') && !calendarMsg.includes('failed') ? 'rgba(0,180,100,0.08)' : 'rgba(220,60,60,0.08)',
+                  border: `1px solid ${calendarMsg.includes('connected') && !calendarMsg.includes('failed') ? 'rgba(0,200,100,0.2)' : 'rgba(220,60,60,0.2)'}`,
+                  color: calendarMsg.includes('connected') && !calendarMsg.includes('failed') ? 'rgba(100,220,160,0.9)' : 'rgba(252,165,165,0.9)',
+                }}>
+                  {calendarMsg}
+                </div>
+              )}
+              {calendarStatus?.connected ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: calendarStatus.requiresReconnect ? '#f59e0b' : '#22c55e', boxShadow: `0 0 6px ${calendarStatus.requiresReconnect ? 'rgba(245,158,11,0.5)' : 'rgba(34,197,94,0.5)'}` }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: calendarStatus.requiresReconnect ? 'rgba(252,200,100,0.9)' : 'rgba(100,220,160,0.9)' }}>
+                      {calendarStatus.requiresReconnect ? 'Reconnect required' : 'Connected'}
+                    </span>
+                    {calendarStatus.googleEmail && (
+                      <span style={{ fontSize: 12, color: 'rgba(90,120,160,0.7)' }}>({calendarStatus.googleEmail})</span>
+                    )}
+                  </div>
+                  {calendarStatus.requiresReconnect && (
+                    <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.75)', marginBottom: 12 }}>
+                      Your calendar connection needs to be refreshed. Please reconnect.
+                    </p>
+                  )}
+                  <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.75)', marginBottom: 12 }}>
+                    Focus blocks you schedule in MindPad AI will be added to your primary Google Calendar.
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {calendarStatus.requiresReconnect && (
+                      <Button variant="primary" onClick={handleCalendarConnect} disabled={calendarLoading}>
+                        {calendarLoading ? <Spinner size="sm" /> : <CalendarDays size={14} />}
+                        Reconnect Calendar
+                      </Button>
+                    )}
+                    <Button variant="ghost" onClick={handleCalendarDisconnect} disabled={calendarLoading}>
+                      {calendarLoading ? <Spinner size="sm" /> : <ExternalLink size={14} />}
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.8)', marginBottom: 12 }}>
+                    Connect Google Calendar to schedule focus sessions as real calendar events.
+                    Available on Pro and Team plans.
+                  </p>
+                  <Button variant="primary" onClick={handleCalendarConnect} disabled={calendarLoading}>
+                    {calendarLoading ? <Spinner size="sm" /> : <CalendarDays size={14} />}
+                    Connect Google Calendar
+                  </Button>
                 </div>
               )}
             </SettingsCard>

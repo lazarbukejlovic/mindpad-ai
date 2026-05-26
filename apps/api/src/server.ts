@@ -16,6 +16,8 @@ import teamRoutes from './routes/teamRoutes';
 import executionPlanRoutes from './routes/executionPlanRoutes';
 import reportsRoutes from './routes/reportsRoutes';
 import onboardingRoutes from './routes/onboardingRoutes';
+import calendarRoutes from './routes/calendarRoutes';
+import { handleCalendarCallback } from './controllers/calendarController';
 import { getAIStatus } from './services/aiService';
 import { previewInvite } from './controllers/teamController';
 import { logger } from './utils/logger';
@@ -63,6 +65,23 @@ app.use('/api/team', authMiddleware, teamRoutes);
 app.use('/api/execution-plans', authMiddleware, executionPlanRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
 app.use('/api/onboarding', authMiddleware, onboardingRoutes);
+
+// Calendar callback is public (Google redirect, no auth header)
+app.get('/api/calendar/google/callback', async (req: express.Request, res: Response) => {
+  const { code, state, error } = req.query as Record<string, string>;
+  if (error || !code || !state) {
+    res.redirect(`${config.clientUrl}/settings?calendar=failed`);
+    return;
+  }
+  try {
+    await handleCalendarCallback(code, state);
+    res.redirect(`${config.clientUrl}/settings?calendar=connected`);
+  } catch {
+    res.redirect(`${config.clientUrl}/settings?calendar=failed`);
+  }
+});
+// All other calendar routes require auth
+app.use('/api/calendar', authMiddleware, calendarRoutes);
 
 // Public AI status — registered before authMiddleware covers /api/ai
 app.get('/api/ai/status', async (_req: express.Request, res: Response) => {

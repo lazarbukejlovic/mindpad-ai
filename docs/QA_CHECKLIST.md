@@ -448,6 +448,54 @@ Run through this checklist before every production release. Each item must pass 
 
 ---
 
+## Phase 8 — Google Calendar Focus Block Integration
+
+### Settings — Calendar section
+- [ ] Calendar section appears below Team Workspace in Settings
+- [ ] "Connect Google Calendar" button is visible when not connected
+- [ ] Clicking "Connect Google Calendar" redirects to Google OAuth consent (calendar.events.owned scope)
+- [ ] After successful OAuth, user is redirected to `/settings?calendar=connected` and success message appears
+- [ ] After failed OAuth (user denied / error), user is redirected to `/settings?calendar=failed` and failure message appears
+- [ ] Connected state shows "Connected" badge with the Google email used
+- [ ] "Disconnect" button disconnects and shows "Calendar disconnected." message
+- [ ] After disconnecting, card reverts to "not connected" state
+
+### Calendar scheduling — Focus page
+- [ ] When not connected: calendar card in right column shows "Connect Google Calendar" link to /settings
+- [ ] When connected: card shows a start time picker (datetime-local) and "Add to Calendar" button
+- [ ] Duration shown matches the currently selected timer duration (25/50/90 min)
+- [ ] Clicking "Add to Calendar" creates a Google Calendar event named "Focus: [task title]" or "Focus: Focus session"
+- [ ] On success: "Focus block added to Google Calendar." message appears in the card
+- [ ] "Open in Google Calendar" link appears if Google returns an htmlLink — opens in new tab
+- [ ] "Schedule another" link resets the calendar card for another scheduling
+- [ ] Free plan: backend returns 403 — frontend shows "Calendar scheduling is available on Pro and Team plans."
+- [ ] Reconnect required state: card shows "Please reconnect Google Calendar in Settings." message
+
+### Dashboard — Next Best Action integration
+- [ ] When Next Best Action card shows a result, "Schedule in Calendar" link appears below "Start session"
+- [ ] If calendar not connected: "Connect Calendar" link goes to /settings
+- [ ] If calendar connected: "Schedule in Calendar →" link goes to /focus
+
+### Token handling (security)
+- [ ] Access tokens and refresh tokens are never visible in API responses or frontend code
+- [ ] Encrypted tokens are stored in MongoDB (accessTokenEncrypted / refreshTokenEncrypted fields)
+- [ ] No OAuth access codes or tokens appear in server logs (logger redacts them)
+- [ ] Calendar callback state is validated — invalid/expired states are rejected and redirect to failed
+
+### Plan gating
+- [ ] Free users see "Connect Google Calendar" button in Settings but when they try to schedule, backend returns "Calendar scheduling is available on Pro and Team plans."
+- [ ] Pro and Team users can schedule focus blocks without restriction
+
+### Regression (must still pass after Phase 8)
+- [ ] Existing Google OAuth login (/api/auth/google/callback) still works end-to-end
+- [ ] Calendar callback (/api/calendar/google/callback) is separate from login callback
+- [ ] Auth, persistent login, password reset, email verification all still work
+- [ ] Team workspace, Stripe billing, AI features, Brain Dump, Tasks, Analytics still work
+- [ ] No tokens/secrets logged (Phase 6 logger still active)
+- [ ] Legal pages (/privacy, /ai-data-notice) now include Google Calendar section
+
+---
+
 ## Build verification (run before every release)
 
 ```bash

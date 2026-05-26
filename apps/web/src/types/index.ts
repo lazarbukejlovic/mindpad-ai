@@ -261,3 +261,17 @@ export interface BlockerAnalysisResult {
   overallStatus: string;
   mode: 'ai' | 'offline';
 }
+
+export interface CalendarStatus {
+  connected: boolean;
+  googleEmail: string | null;
+  requiresReconnect: boolean;
+}
+
+export interface CalendarFocusBlockResult {
+  eventId: string;
+  htmlLink: string | null;
+  start: string;
+  end: string;
+  message: string;
+}

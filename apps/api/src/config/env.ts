@@ -19,4 +19,7 @@ export const config = {
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/api/auth/google/callback',
   resendApiKey: process.env.RESEND_API_KEY || '',
   emailFrom: process.env.EMAIL_FROM || 'MindPad AI <noreply@mindpad.ai>',
+  googleCalendarRedirectUri: process.env.GOOGLE_CALENDAR_REDIRECT_URI || 'http://localhost:4000/api/calendar/google/callback',
+  googleCalendarScope: process.env.GOOGLE_CALENDAR_SCOPE || 'https://www.googleapis.com/auth/calendar.events.owned',
+  calendarTokenSecret: process.env.CALENDAR_TOKEN_SECRET || '',
 };
