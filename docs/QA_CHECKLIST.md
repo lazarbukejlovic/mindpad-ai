@@ -303,6 +303,66 @@ Run through this checklist before every production release. Each item must pass 
 
 ---
 
+## Billing Lifecycle & Legal Trust (Phase 4)
+
+### Backend billing sync
+- [ ] `POST /api/billing/sync` requires auth and returns updated billing status
+- [ ] Sync fetches the live Stripe subscription if `stripeSubscriptionId` exists
+- [ ] Sync gracefully returns local billing state if Stripe is unreachable (no 500)
+- [ ] `GET /api/billing/status` now returns `canManageBilling`, `trialEnd`, and `canceledAt`
+- [ ] `canManageBilling` is `true` only when user has a `stripeCustomerId` and Stripe is configured
+- [ ] Billing portal `return_url` is `/settings?billing=return` (not `/settings`)
+
+### Settings — billing section
+- [ ] `?billing=return` param shows "Billing updated. Your plan status is shown below." message
+- [ ] "Sync Status" button appears for users with `canManageBilling=true`
+- [ ] Clicking "Sync Status" refreshes billing data and shows confirmation message
+- [ ] `subscriptionStatus: 'trialing'` displays as "Trial active" with trial end date
+- [ ] `subscriptionStatus: 'past_due'` displays as "Payment due" with amber warning banner
+- [ ] `subscriptionStatus: 'unpaid'` displays as "Unpaid" with warning banner
+- [ ] `subscriptionStatus: 'canceled'` shows "Canceled on [date]" (canceledAt field)
+- [ ] `cancelAtPeriodEnd` banner appears correctly (will not renew)
+- [ ] "Manage Billing" button opens Stripe portal and lands back on `/settings?billing=return`
+- [ ] "Manage Billing" button is hidden for free users with no Stripe customer ID
+
+### Dashboard — billing alert
+- [ ] `past_due` or `unpaid` subscription shows a red non-blocking alert at top of dashboard
+- [ ] `cancelAtPeriodEnd` shows a yellow warning alert with the end date
+- [ ] Alert has a "Manage billing" link to /settings
+- [ ] Alert does NOT block the rest of the dashboard from loading
+- [ ] Users with active subscriptions (no issues) see no alert
+
+### Pricing page
+- [ ] Stripe trust line is visible: "Payments are securely processed by Stripe. MindPad AI never stores your card details."
+- [ ] Paid users with `canManageBilling=true` see a "Manage billing" button below the plan cards
+- [ ] Non-paid users and logged-out visitors do NOT see the manage billing button
+- [ ] ShieldCheck icon appears next to the trust line
+
+### Legal pages
+- [ ] `/privacy` loads with Privacy Policy content, correct dark theme
+- [ ] `/terms` loads with Terms of Service content
+- [ ] `/refund-policy` loads with Refund Policy content (14-day window clearly stated)
+- [ ] `/ai-data-notice` loads with AI Data Notice content (what AI processes, offline fallback)
+- [ ] All 4 legal pages have cross-links to each other in the footer
+- [ ] All 4 legal pages have a "Back to home" link in the header
+- [ ] No AppNav on legal pages (they are public, no auth required)
+
+### Landing page footer
+- [ ] Footer contains links to Privacy Policy, Terms of Service, Refund Policy, AI Data Notice
+- [ ] All footer legal links navigate to correct pages
+- [ ] Footer still shows Login and Sign up links
+
+### Regression (must still pass after Phase 4)
+- [ ] Stripe checkout and billing still work
+- [ ] Google login still works end-to-end
+- [ ] Team workspace (invite flow, member access, role gating) still works
+- [ ] Password reset and email verification still work
+- [ ] Persistent login still works across browser close/reopen
+- [ ] Onboarding flow still works for new users
+- [ ] All AI features (brain dump, focus, brief, analytics) still work
+
+---
+
 ## Build verification (run before every release)
 
 ```bash

@@ -1116,16 +1116,24 @@ export default function LandingPage() {
         </section>
 
         {/* Footer */}
-        <footer className="border-t border-white/10 px-6 py-8">
-          <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-            <div className="flex items-center gap-2">
-              <Brain size={16} color="#0c92e8" />
-              <span className="text-sm font-bold text-[#475569]">MindPad AI</span>
+        <footer className="border-t border-white/10 px-6 py-10">
+          <div className="mx-auto max-w-6xl flex flex-col gap-6">
+            <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+              <div className="flex items-center gap-2">
+                <Brain size={16} color="#0c92e8" />
+                <span className="text-sm font-bold text-[#475569]">MindPad AI</span>
+              </div>
+              <p className="text-xs text-[#1e293b]">AI productivity workspace for focused execution.</p>
+              <div className="flex gap-5 text-xs text-[#374151]">
+                <Link href="/login" className="transition hover:text-[#64748b]">Login</Link>
+                <Link href="/register" className="transition hover:text-[#64748b]">Sign up</Link>
+              </div>
             </div>
-            <p className="text-xs text-[#1e293b]">AI productivity workspace for focused execution.</p>
-            <div className="flex gap-5 text-xs text-[#374151]">
-              <Link href="/login" className="transition hover:text-[#64748b]">Login</Link>
-              <Link href="/register" className="transition hover:text-[#64748b]">Sign up</Link>
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-[#2a3a50]">
+              <Link href="/privacy" className="transition hover:text-[#475569]">Privacy Policy</Link>
+              <Link href="/terms" className="transition hover:text-[#475569]">Terms of Service</Link>
+              <Link href="/refund-policy" className="transition hover:text-[#475569]">Refund Policy</Link>
+              <Link href="/ai-data-notice" className="transition hover:text-[#475569]">AI Data Notice</Link>
             </div>
           </div>
         </footer>

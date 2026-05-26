@@ -14,6 +14,8 @@ export interface IUser extends Document {
   subscriptionStatus?: string;
   currentPeriodEnd?: Date;
   cancelAtPeriodEnd?: boolean;
+  trialEnd?: Date;
+  canceledAt?: Date;
   dailyExtractionsUsed?: number;
   dailyExtractionsUsedDate?: Date;
   emailVerified?: boolean;
@@ -66,6 +68,8 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
     },
+    trialEnd: Date,
+    canceledAt: Date,
     dailyExtractionsUsed: {
       type: Number,
       default: 0,

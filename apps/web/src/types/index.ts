@@ -118,6 +118,9 @@ export interface BillingStatus {
   subscriptionStatus?: string | null;
   currentPeriodEnd?: string | null;
   cancelAtPeriodEnd?: boolean;
+  trialEnd?: string | null;
+  canceledAt?: string | null;
+  canManageBilling?: boolean;
   stripeConfigured: boolean;
   entitlements: PlanEntitlements;
   usage: {

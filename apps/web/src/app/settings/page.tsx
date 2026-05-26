@@ -79,6 +79,7 @@ function SettingsContent() {
   const [billingMsg, setBillingMsg]             = useState('');
   const [upgradeLoading, setUpgradeLoading]     = useState<'pro' | 'team' | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
+  const [syncLoading, setSyncLoading]           = useState(false);
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
   const [restartingOnboarding, setRestartingOnboarding] = useState(false);
   const [teamWorkspace, setTeamWorkspace]               = useState<import('@/types/index').TeamWorkspace | null>(null);
@@ -117,6 +118,7 @@ function SettingsContent() {
 
     const billingParam = searchParams.get('billing');
     if (billingParam === 'success') setBillingMsg('Your plan has been upgraded successfully.');
+    if (billingParam === 'return') setBillingMsg('Billing updated. Your plan status is shown below.');
     if (billingParam === 'canceled') setBillingMsg('');
 
     const verifiedParam = searchParams.get('verified');
@@ -174,6 +176,19 @@ function SettingsContent() {
     }
   }
 
+  async function handleSyncBilling() {
+    setSyncLoading(true);
+    try {
+      const updated = await ApiClient.syncBilling();
+      setBilling(updated);
+      setBillingMsg('Billing status refreshed.');
+    } catch {
+      setBillingMsg('Could not refresh billing status. Please try again.');
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
   const selectStyle: React.CSSProperties = {
     height: 38, padding: '0 12px', borderRadius: 9,
     border: '1px solid rgba(0,160,255,0.15)', background: 'rgba(0,0,0,0.4)',
@@ -193,8 +208,6 @@ function SettingsContent() {
   }
 
   const plan = billing?.plan ?? 'free';
-  const isPaid = plan === 'pro' || plan === 'team';
-  const hasCustomer = billing && (billing.plan !== 'free' || billing.subscriptionStatus);
 
   return (
     <div className="min-h-screen" style={{ background: 'rgb(3, 6, 14)', position: 'relative' }}>
@@ -376,12 +389,29 @@ function SettingsContent() {
                       {billing.subscriptionStatus && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 13, color: 'rgba(120,150,190,0.8)' }}>Status</span>
-                          <span style={{ fontSize: 13, fontWeight: 500, color: billing.subscriptionStatus === 'active' ? 'rgba(100,220,160,0.9)' : 'rgba(252,200,100,0.9)', textTransform: 'capitalize' }}>
-                            {billing.subscriptionStatus}
+                          <span style={{ fontSize: 13, fontWeight: 500, textTransform: 'capitalize', color:
+                            billing.subscriptionStatus === 'active' ? 'rgba(100,220,160,0.9)' :
+                            billing.subscriptionStatus === 'trialing' ? 'rgba(100,180,255,0.9)' :
+                            billing.subscriptionStatus === 'past_due' || billing.subscriptionStatus === 'unpaid' ? 'rgba(252,140,80,0.9)' :
+                            billing.subscriptionStatus === 'canceled' ? 'rgba(252,165,165,0.85)' :
+                            'rgba(252,200,100,0.9)',
+                          }}>
+                            {billing.subscriptionStatus === 'trialing' ? 'Trial active' :
+                             billing.subscriptionStatus === 'past_due' ? 'Payment due' :
+                             billing.subscriptionStatus === 'unpaid' ? 'Unpaid' :
+                             billing.subscriptionStatus}
                           </span>
                         </div>
                       )}
-                      {billing.currentPeriodEnd && (
+                      {billing.trialEnd && billing.subscriptionStatus === 'trialing' && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 13, color: 'rgba(120,150,190,0.8)' }}>Trial ends</span>
+                          <span style={{ fontSize: 13, color: 'rgba(180,210,240,0.8)' }}>
+                            {new Date(billing.trialEnd).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                      {billing.currentPeriodEnd && billing.subscriptionStatus !== 'canceled' && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 13, color: 'rgba(120,150,190,0.8)' }}>
                             {billing.cancelAtPeriodEnd ? 'Access until' : 'Renews'}
@@ -391,7 +421,20 @@ function SettingsContent() {
                           </span>
                         </div>
                       )}
-                      {billing.cancelAtPeriodEnd && (
+                      {billing.canceledAt && billing.subscriptionStatus === 'canceled' && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 13, color: 'rgba(120,150,190,0.8)' }}>Canceled on</span>
+                          <span style={{ fontSize: 13, color: 'rgba(180,210,240,0.8)' }}>
+                            {new Date(billing.canceledAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                      {(billing.subscriptionStatus === 'past_due' || billing.subscriptionStatus === 'unpaid') && (
+                        <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(220,100,30,0.09)', border: '1px solid rgba(220,100,30,0.2)', fontSize: 12, color: 'rgba(252,160,100,0.9)' }}>
+                          Your payment is past due. Please update your payment method to keep access.
+                        </div>
+                      )}
+                      {billing.cancelAtPeriodEnd && billing.subscriptionStatus !== 'canceled' && (
                         <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(220,150,30,0.08)', border: '1px solid rgba(220,150,30,0.18)', fontSize: 12, color: 'rgba(252,210,100,0.85)' }}>
                           Your subscription will not renew at the end of the current period.
                         </div>
@@ -455,7 +498,7 @@ function SettingsContent() {
                           </Button>
                         </>
                       )}
-                      {isPaid && (
+                      {billing?.canManageBilling && (
                         <Button
                           variant="ghost"
                           onClick={handleManageBilling}
@@ -465,14 +508,14 @@ function SettingsContent() {
                           Manage Billing
                         </Button>
                       )}
-                      {!isPaid && hasCustomer && (
+                      {billing?.canManageBilling && (
                         <Button
                           variant="ghost"
-                          onClick={handleManageBilling}
-                          disabled={portalLoading}
+                          onClick={handleSyncBilling}
+                          disabled={syncLoading}
                         >
-                          {portalLoading ? <Spinner size="sm" /> : <CreditCard size={14} />}
-                          Manage Billing
+                          {syncLoading ? <Spinner size="sm" /> : <RefreshCw size={14} />}
+                          Sync Status
                         </Button>
                       )}
                     </div>

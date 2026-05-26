@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import { getBillingStatus, createCheckoutSession, createPortalSession } from '../controllers/billingController';
+import { getBillingStatus, createCheckoutSession, createPortalSession, syncBilling } from '../controllers/billingController';
 
 const router = Router();
 
@@ -39,6 +39,16 @@ router.post('/create-portal-session', async (req: AuthRequest, res: Response) =>
     const msg = err instanceof Error ? err.message : 'Failed to create portal session';
     const status = msg.includes('No billing account') || msg === 'Billing not configured' ? 400 : 500;
     res.status(status).json({ error: msg });
+  }
+});
+
+router.post('/sync', async (req: AuthRequest, res: Response) => {
+  try {
+    const status = await syncBilling(req.userId!);
+    res.json(status);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to sync billing';
+    res.status(500).json({ error: msg });
   }
 });
 

@@ -665,6 +665,12 @@ export class ApiClient {
     });
   }
 
+  static syncBilling() {
+    return this.request<import('@/types/index').BillingStatus>('/billing/sync', {
+      method: 'POST',
+    });
+  }
+
   // Team
   static getTeamWorkspace() {
     return this.request<import('@/types/index').TeamWorkspaceState>('/team');

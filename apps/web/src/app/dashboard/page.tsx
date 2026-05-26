@@ -150,6 +150,9 @@ export default function DashboardPage() {
   // Team card (non-blocking, best-effort)
   const [teamState, setTeamState]       = useState<TeamWorkspaceState | null>(null);
 
+  // Billing alert (non-blocking, best-effort)
+  const [billingAlert, setBillingAlert] = useState<{ type: 'warning' | 'danger'; msg: string } | null>(null);
+
   // Capture Google OAuth token synchronously before useSessionRestore's useEffect fires.
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -183,6 +186,14 @@ export default function DashboardPage() {
         loadDashboard();
         ApiClient.getAIStatus().then(st => setAiMode(st.mode)).catch(() => setAiMode('offline'));
         ApiClient.getTeamWorkspace().then(ts => { if (ts.exists) setTeamState(ts); }).catch(() => {});
+        ApiClient.getBillingStatus().then(b => {
+          if (b.subscriptionStatus === 'past_due' || b.subscriptionStatus === 'unpaid') {
+            setBillingAlert({ type: 'danger', msg: 'Your payment is past due. Please update your payment method to keep access.' });
+          } else if (b.cancelAtPeriodEnd && b.currentPeriodEnd) {
+            const end = new Date(b.currentPeriodEnd).toLocaleDateString();
+            setBillingAlert({ type: 'warning', msg: `Your subscription ends on ${end} and will not renew.` });
+          }
+        }).catch(() => {});
       })
       .catch(() => {
         // If onboarding status unavailable, proceed to dashboard anyway.
@@ -288,6 +299,20 @@ export default function DashboardPage() {
 
             {userEmail && emailVerified === false && authProvider !== 'google' && (
               <VerificationBanner email={userEmail} authProvider={authProvider} emailVerified={emailVerified} />
+            )}
+
+            {billingAlert && (
+              <div style={{
+                marginBottom: 16, padding: '10px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                background: billingAlert.type === 'danger' ? 'rgba(220,60,30,0.09)' : 'rgba(220,150,30,0.09)',
+                border: `1px solid ${billingAlert.type === 'danger' ? 'rgba(220,60,30,0.22)' : 'rgba(220,150,30,0.22)'}`,
+                fontSize: 13, color: billingAlert.type === 'danger' ? 'rgba(252,140,100,0.95)' : 'rgba(252,210,100,0.95)',
+              }}>
+                <span>{billingAlert.msg}</span>
+                <Link href="/settings" style={{ fontSize: 12, fontWeight: 700, color: 'inherit', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+                  Manage billing
+                </Link>
+              </div>
             )}
 
             {/* ── Onboarding checklist ── */}

@@ -33,11 +33,16 @@ export async function getBillingStatus(userId: string) {
   const lastDate = user.dailyExtractionsUsedDate?.toDateString();
   const dailyExtractionsUsed = lastDate === today ? (user.dailyExtractionsUsed || 0) : 0;
 
+  const canManageBilling = !!(user.stripeCustomerId && config.stripeSecretKey);
+
   return {
     plan,
     subscriptionStatus: user.subscriptionStatus ?? null,
     currentPeriodEnd: user.currentPeriodEnd ? user.currentPeriodEnd.toISOString() : null,
     cancelAtPeriodEnd: user.cancelAtPeriodEnd ?? false,
+    trialEnd: user.trialEnd ? user.trialEnd.toISOString() : null,
+    canceledAt: user.canceledAt ? user.canceledAt.toISOString() : null,
+    canManageBilling,
     stripeConfigured: !!config.stripeSecretKey,
     entitlements,
     usage: {
@@ -87,10 +92,50 @@ export async function createPortalSession(userId: string) {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripeCustomerId,
-    return_url: `${config.clientUrl}/settings`,
+    return_url: `${config.clientUrl}/settings?billing=return`,
   });
 
   return { url: session.url };
+}
+
+export async function syncBilling(userId: string) {
+  const stripe = getStripe();
+  const user = await User.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  if (!stripe || !user.stripeSubscriptionId) {
+    return getBillingStatus(userId);
+  }
+
+  try {
+    const sub: any = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+    const priceId = sub.items?.data[0]?.price?.id;
+    const derivedPlan = priceId ? planFromPriceId(priceId) : null;
+    const isActive = sub.status === 'active' || sub.status === 'trialing';
+
+    const update: Record<string, unknown> = {
+      subscriptionStatus: sub.status,
+      currentPeriodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
+      cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+      trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
+    };
+
+    if (derivedPlan) {
+      update.plan = isActive ? derivedPlan : 'free';
+    } else if (!isActive) {
+      update.plan = 'free';
+    }
+
+    if (sub.status === 'canceled') {
+      update.canceledAt = user.canceledAt ?? new Date();
+    }
+
+    await User.findByIdAndUpdate(userId, update);
+  } catch {
+    // Stripe fetch failed — return current local state without throwing
+  }
+
+  return getBillingStatus(userId);
 }
 
 export async function handleStripeWebhook(payload: Buffer, signature: string) {
@@ -135,6 +180,7 @@ export async function handleStripeWebhook(payload: Buffer, signature: string) {
         subscriptionStatus: sub.status,
         currentPeriodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
         cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+        trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
       };
 
       if (derivedPlan) {
@@ -157,6 +203,7 @@ export async function handleStripeWebhook(payload: Buffer, signature: string) {
           stripeSubscriptionId: null,
           currentPeriodEnd: null,
           cancelAtPeriodEnd: false,
+          canceledAt: new Date(),
         }
       );
       break;

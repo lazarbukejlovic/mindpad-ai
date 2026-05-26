@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Zap, Users, Brain, Sparkles, Lock } from 'lucide-react';
+import { Check, Zap, Users, Brain, Lock, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { isAuthenticated } from '@/lib/auth';
@@ -70,6 +70,7 @@ export default function PricingPage() {
   const router = useRouter();
   const { plan: currentPlan, billing } = useBilling();
   const [upgradeLoading, setUpgradeLoading] = useState<'pro' | 'team' | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
   async function handleUpgrade(plan: 'pro' | 'team') {
@@ -86,7 +87,21 @@ export default function PricingPage() {
     }
   }
 
+  async function handleManageBilling() {
+    setPortalLoading(true);
+    setMsg('');
+    try {
+      const { url } = await ApiClient.createPortalSession();
+      if (url) window.location.href = url;
+    } catch {
+      setMsg('Could not open billing portal. Please try again.');
+    } finally {
+      setPortalLoading(false);
+    }
+  }
+
   const isLoggedIn = !!isAuthenticated();
+  const isPaid = currentPlan === 'pro' || currentPlan === 'team';
 
   return (
     <div className="min-h-screen" style={{ background: 'rgb(3, 6, 14)', position: 'relative' }}>
@@ -296,16 +311,34 @@ export default function PricingPage() {
 
             </div>
 
-            {/* ── FAQ footer ── */}
-            <div style={{ textAlign: 'center', marginTop: 48 }}>
-              <p style={{ fontSize: 13, color: 'rgba(70,100,140,0.6)' }}>
+            {/* ── Footer trust line ── */}
+            <div style={{ textAlign: 'center', marginTop: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={14} style={{ color: 'rgba(70,100,140,0.6)' }} />
+                <span style={{ fontSize: 12, color: 'rgba(70,100,140,0.6)' }}>
+                  Payments are securely processed by{' '}
+                  <span style={{ color: 'rgba(100,140,200,0.7)', fontWeight: 600 }}>Stripe</span>
+                  . MindPad AI never stores your card details.
+                </span>
+              </div>
+              {isLoggedIn && isPaid && billing?.canManageBilling && (
+                <button
+                  onClick={handleManageBilling}
+                  disabled={portalLoading}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
+                    background: 'rgba(0,100,200,0.08)', border: '1px solid rgba(0,160,255,0.18)',
+                    fontSize: 12, fontWeight: 600, color: 'rgba(100,160,220,0.85)',
+                    opacity: portalLoading ? 0.7 : 1,
+                  }}
+                >
+                  {portalLoading ? <Spinner size="sm" /> : null}
+                  Manage billing
+                </button>
+              )}
+              <p style={{ fontSize: 12, color: 'rgba(50,80,120,0.5)' }}>
                 All plans include secure data storage and access to MindPad AI.
-                {' '}
-                {isLoggedIn && billing?.stripeConfigured && (
-                  <Link href="/settings" style={{ color: 'rgba(100,160,220,0.7)', textDecoration: 'none' }}>
-                    Manage billing in Settings →
-                  </Link>
-                )}
               </p>
             </div>
 
