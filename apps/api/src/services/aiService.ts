@@ -245,6 +245,21 @@ function normalizeClause(clause: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+// Matches non-actionable mental-state or context sentences that should never become tasks.
+const NON_ACTIONABLE_RE = /^(i have |i feel |i am |i'm |i was |my mind|my brain|there is |there are |so much|too much|everything is|i need clarity|i need to think|i want clarity|i want a clear|i keep|i've been|i just |it feels|it's hard|i don't know|i'm not sure|i can't|i cannot)/i;
+
+// A heuristic action-verb check — tasks should start with a verb or a clear noun object.
+const ACTION_VERB_RE = /^(finish|complete|fix|check|test|review|update|prepare|write|send|build|deploy|clean|add|remove|refactor|create|implement|configure|set up|set up|migrate|document|schedule|confirm|verify|call|email|contact|draft|research|analyse|analyze|define|plan|design|launch|ship|merge|push|pull|run|start|stop|close|open|delete|archive|move|upload|download|integrate|handle|resolve|debug|investigate|read|watch|listen|attend|book|cancel)/i;
+
+function isActionable(text: string): boolean {
+  if (NON_ACTIONABLE_RE.test(text)) return false;
+  // If it starts with a known action verb, it's very likely actionable.
+  if (ACTION_VERB_RE.test(text)) return true;
+  // Otherwise allow it only if it's short enough to be a concrete task title (not a long reflective sentence)
+  const wordCount = text.split(/\s+/).length;
+  return wordCount <= 8;
+}
+
 function extractTasksLocal(content: string): string[] {
   const cleaned = content.replace(/\s+/g, ' ').trim();
   if (!cleaned) return [];
@@ -257,6 +272,7 @@ function extractTasksLocal(content: string): string[] {
     for (const clause of clauses) {
       const normalized = normalizeClause(clause);
       if (!normalized || normalized.length < 4) continue;
+      if (!isActionable(normalized)) continue;
       if (tasks.some((t) => t.toLowerCase() === normalized.toLowerCase())) continue;
       tasks.push(normalized);
       if (tasks.length >= 6) break;
@@ -266,7 +282,7 @@ function extractTasksLocal(content: string): string[] {
   if (tasks.length === 0) {
     const parts = content.split(/[\n;]+/).map((p) => normalizeClause(p)).filter(Boolean);
     for (const p of parts) {
-      if (!tasks.includes(p)) tasks.push(p);
+      if (isActionable(p) && !tasks.includes(p)) tasks.push(p);
       if (tasks.length >= 6) break;
     }
   }
@@ -319,6 +335,9 @@ function getOrganizeFallback(brainDump: string): OrganizeResult {
     /urgent|asap|today|deadline|client|prod|critical|fix|emergency/i.test(task) ? 'High' : 'Medium'
   );
 
+  // Pick Focus First: prefer a task that starts with an action verb; fall back to first task.
+  const focusTask = finalTasks.find(t => ACTION_VERB_RE.test(t)) ?? finalTasks[0];
+
   return {
     summary: tasks.length > 0
       ? `Extracted ${tasks.length} actionable task${tasks.length !== 1 ? 's' : ''} from your notes.`
@@ -327,7 +346,7 @@ function getOrganizeFallback(brainDump: string): OrganizeResult {
     priorities,
     categories: finalTasks.map(() => 'General'),
     estimatedMinutes: finalTasks.map(() => 25),
-    focusRecommendation: finalTasks.length > 0 ? `Start with: ${finalTasks[0]}` : 'Start with the most time-sensitive task.',
+    focusRecommendation: focusTask ? `Start with: ${focusTask}` : 'Start with the most time-sensitive task.',
     reasoning: tasks.length > 0
       ? 'Extracted using sentence analysis. Enable AI for smarter prioritization.'
       : 'Using default tasks. Write more details for better extraction.',
@@ -339,23 +358,40 @@ export async function organizeWithAI(brainDump: string): Promise<OrganizeResult>
   if (!config.geminiApiKey) return getOrganizeFallback(brainDump);
 
   try {
-    const prompt = `You are MindPad AI â€” a personal execution assistant specialized in turning scattered thoughts into clear action plans.
+    const prompt = `You are MindPad AI — a personal execution assistant. Your job is to extract ONLY concrete, actionable tasks from a brain dump and produce a clear execution plan.
 
-Given this brain dump:
-"""
+Brain dump:
+“””
 ${brainDump}
-"""
+“””
 
-Extract actionable tasks and produce a structured execution plan. Respond with a JSON object:
+CRITICAL RULES FOR TASK EXTRACTION:
+
+1. DO NOT create tasks from mental-state or context sentences. These are NOT tasks:
+   - “I have too many loose things in my head”
+   - “I feel overwhelmed”
+   - “I am jumping between things”
+   - “I need clarity”
+   - “I want a clear execution order”
+   - Any sentence describing a feeling, mental state, or general situation
+   Use these as context for the summary and reasoning only.
+
+2. ONLY create tasks that are concrete, executable actions — things to finish, check, test, prepare, review, fix, build, send, confirm, or clean. Every task title should start with an action verb:
+   GOOD: “Finish billing lifecycle polish”, “Check Stripe portal return flow”, “Test member role permissions”, “Prepare product summary”
+   BAD: “Mental clarity”, “Too many things”, “Execution order”
+
+3. “focusRecommendation” MUST be exactly one of the task titles you extracted (copy it verbatim), followed by a dash and one sentence explaining why it is the highest-impact item to start with.
+
+Respond with a JSON object:
 {
-  "summary": "2-3 sentences: what the user is trying to accomplish and the key challenge",
-  "tasks": ["3-6 specific, actionable task titles"],
-  "priorities": ["High/Medium/Low for each task"],
-  "categories": ["category for each task: Work / Personal / Learning / Health / Admin / Creative"],
-  "estimatedMinutes": [25, 50, 25, ...estimated focus minutes per task],
-  "focusRecommendation": "The single task to focus on first and why â€” 1 sentence",
-  "reasoning": "Brief explanation of your prioritization logic",
-  "dailyPlanSuggestion": "Optional: a simple 3-step plan for today based on the tasks"
+  “summary”: “2-3 sentences: what the user needs to accomplish and their current context or mental state”,
+  “tasks”: [“3-6 concrete, actionable task titles starting with a verb”],
+  “priorities”: [“High/Medium/Low for each task — base this on urgency, client/revenue impact, or blocking effects”],
+  “categories”: [“Work / Personal / Learning / Health / Admin / Creative — one per task”],
+  “estimatedMinutes”: [25, 50, 25, ...realistic focus-session length per task],
+  “focusRecommendation”: “[exact task title from the tasks list above] — [one sentence: why this is the right first action]”,
+  “reasoning”: “1-2 sentences: why you prioritized in this order, referencing specific signals from the brain dump”,
+  “dailyPlanSuggestion”: “Optional: a simple 3-step sequence for today using these tasks”
 }
 
 Return ONLY valid JSON, no markdown fences. Be concise and execution-focused.`;
