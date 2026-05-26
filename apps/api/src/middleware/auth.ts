@@ -13,7 +13,7 @@ export function authMiddleware(
   next: NextFunction
 ): void {
   const authHeader = req.headers.authorization;
-  const token = authHeader?.replace('Bearer ', '');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
 
   if (!token) {
     res.status(401).json({ error: 'Missing authorization token', code: 'NO_TOKEN' });

@@ -3,6 +3,7 @@ import cors from 'cors';
 import { config } from './config/env';
 import { connectDB } from './config/database';
 import { authMiddleware } from './middleware/auth';
+import { authLimiter, forgotPasswordLimiter, aiLimiter } from './middleware/rateLimiter';
 import authRoutes from './routes/authRoutes';
 import brainDumpRoutes from './routes/brainDumpRoutes';
 import taskRoutes from './routes/taskRoutes';
@@ -17,6 +18,7 @@ import reportsRoutes from './routes/reportsRoutes';
 import onboardingRoutes from './routes/onboardingRoutes';
 import { getAIStatus } from './services/aiService';
 import { previewInvite } from './controllers/teamController';
+import { logger } from './utils/logger';
 
 const app = express();
 
@@ -28,12 +30,17 @@ app.use('/api/stripe', express.raw({ type: 'application/json' }), webhookRoutes)
 // All other routes get JSON parsing
 app.use(express.json());
 
-connectDB().catch(console.error);
+connectDB().catch((err: Error) => logger.error('DB connection failed', { message: err.message }));
 
 app.get('/api/health', (_req: express.Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Rate limit sensitive auth endpoints before routing
+app.post('/api/auth/login', authLimiter);
+app.post('/api/auth/register', authLimiter);
+app.post('/api/auth/forgot-password', forgotPasswordLimiter);
+app.post('/api/auth/send-verification-email', forgotPasswordLimiter);
 app.use('/api/auth', authRoutes);
 
 // Public invite preview — must be registered BEFORE authMiddleware covers /api/team
@@ -65,7 +72,7 @@ app.get('/api/ai/status', async (_req: express.Request, res: Response) => {
     res.json({ configured: false, available: false, mode: 'offline', reason: 'unknown' });
   }
 });
-app.use('/api/ai', authMiddleware, aiRoutes);
+app.use('/api/ai', authMiddleware, aiLimiter, aiRoutes);
 
 app.use((_req: express.Request, res: Response) => {
   res.status(404).json({ error: 'Not found' });
@@ -78,8 +85,8 @@ app.use(
     res: Response,
     _next: express.NextFunction
   ) => {
-    console.error('Server error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    logger.error('Unhandled server error', { name: err.name, message: err.message });
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 );
 

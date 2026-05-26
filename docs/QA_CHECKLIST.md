@@ -414,6 +414,40 @@ Run through this checklist before every production release. Each item must pass 
 
 ---
 
+## Phase 6 — Production Hardening, Error Handling & Security
+
+### Rate limiting
+- [ ] Rapid-fire POST /api/auth/login (>20 req in 15 min from same IP) returns HTTP 429 with "Too many requests"
+- [ ] Rapid-fire POST /api/auth/register returns 429 after 20 req per 15 min
+- [ ] POST /api/auth/forgot-password returns 429 after 5 req per 15 min
+- [ ] POST /api/auth/send-verification-email returns 429 after 5 req per 15 min
+- [ ] AI endpoints return 429 after 30 req per 1 min from same IP
+- [ ] 429 error body is `{ "error": "Too many requests. Please try again later." }` — no stack trace
+
+### Auth token extraction hardening
+- [ ] `Authorization: Bearer  token` (double-space) correctly trims and authenticates
+- [ ] `Authorization: bearerTOKEN` (no space, wrong case) is rejected with 401 INVALID_TOKEN
+- [ ] Token missing entirely returns 401 NO_TOKEN as before
+
+### Centralized error handling
+- [ ] Unhandled server errors return `{ "error": "Something went wrong. Please try again." }` — no stack trace, no internal details
+- [ ] Server startup error (e.g., DB connection failure) is logged as JSON, not raw stack trace
+
+### Safe logging
+- [ ] Server logs are valid JSON lines (structured)
+- [ ] No JWT-shaped strings (eyJ...) appear in any log output
+- [ ] No `password`, `token`, `secret`, `apiKey`, `stripeKey`, `resetToken`, `verificationToken`, `inviteToken` values appear in logs (field names are shown but values are `[REDACTED]`)
+- [ ] Error logs include `name` and `message` only — no stack traces in production
+
+### Regression (must still pass after Phase 6)
+- [ ] Login, register, forgot-password, Google OAuth, persistent login all still work
+- [ ] Brain dump AI extraction, Morning Brief, Priority Brief, Next Best Action, Blocker Analysis all still work
+- [ ] Team workspace invites and member management still work
+- [ ] Stripe billing and webhook processing still work
+- [ ] Email verification and password reset still work
+
+---
+
 ## Build verification (run before every release)
 
 ```bash
