@@ -363,6 +363,57 @@ Run through this checklist before every production release. Each item must pass 
 
 ---
 
+## Phase 5 AI Intelligence Upgrade
+
+### New backend endpoints
+- [ ] `POST /api/ai/next-best-action` requires auth and returns `NextBestActionResult`
+- [ ] `POST /api/ai/priority-brief` requires auth and returns `PriorityBriefResult`
+- [ ] `POST /api/ai/blocker-analysis` requires auth and returns `BlockerAnalysisResult`
+- [ ] `/morning-brief`, `/ask`, `/focus-recommendation` now use server-side DB context (no longer trust client-sent workspaceContext)
+- [ ] All 3 new endpoints return `mode: 'offline'` gracefully when AI is unavailable
+- [ ] Error message shown to user is "MindPad could not generate this insight right now. Try again." — no Gemini/provider names shown
+
+### Priority scoring (deterministic, pre-AI)
+- [ ] Tasks with "urgent/asap/today/deadline/critical/fix/emergency/launch/ship" in title score higher
+- [ ] Tasks with "blocked/stuck/waiting/depends/delayed/paused/blocking" in title score higher
+- [ ] Tasks with "client/customer/revenue/production/demo/meeting/investor" in title score higher
+- [ ] Tasks older than 14 days get +2 score; older than 7 days get +1 score
+- [ ] Tasks mentioned in brain dump content get +1 per dump mention (max +3)
+- [ ] `isStale` is true for tasks older than 14 days; `ageDays` is correct
+
+### Dashboard — Priority Brief card
+- [ ] "Priority Brief" card shows with "Get Priority Brief" button (not auto-loaded)
+- [ ] Clicking "Get Priority Brief" fetches real DB context and shows top priority, secondary, quick win, reasoning, session suggestion
+- [ ] "Refresh" button clears and reloads
+- [ ] Card renders correctly with missing fields (secondaryPriority empty, quickWin empty)
+
+### Dashboard — Next Best Action card
+- [ ] "Next Best Action" card shows in right column with "What's next?" button
+- [ ] Clicking generates a recommendation with task title, why, first step, focus time, confidence label
+- [ ] Confidence label shows correct color (green=high, blue=medium, grey=low)
+- [ ] "Start N-min session" link goes to /focus
+- [ ] "Refresh" button clears result
+
+### Analytics — Blocker Analysis card
+- [ ] "Blocker Analysis" card shows on analytics page with "Analyze" button
+- [ ] Clicking generates analysis from real DB context
+- [ ] If no blockers: shows "No blockers detected" success state
+- [ ] If blockers: each blocker shows name, evidence, impact, next action, suggested window
+- [ ] "Refresh" button regenerates
+- [ ] Error message: "MindPad could not generate this insight right now. Try again."
+
+### Regression (must still pass after Phase 5)
+- [ ] Stripe checkout and billing still work
+- [ ] Google login still works end-to-end
+- [ ] Team workspace (invite flow, member access, role gating) still works
+- [ ] Password reset and email verification still work
+- [ ] Persistent login still works across browser close/reopen
+- [ ] Onboarding flow still works for new users
+- [ ] All existing AI features (brain dump, morning brief, ask, focus recommendation, task cleanup, evening summary, weekly review, export) still work
+- [ ] Legal pages still load and cross-link correctly
+
+---
+
 ## Build verification (run before every release)
 
 ```bash

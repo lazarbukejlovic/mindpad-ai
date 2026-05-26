@@ -6,12 +6,12 @@ import Link from 'next/link';
 import {
   ListTodo, CheckCircle2, CalendarDays, Clock,
   Sparkles, Brain, Timer, ArrowRight, Flame, Zap,
-  Send, MessageSquare, ChevronRight, Users,
+  Send, MessageSquare, ChevronRight, Users, Target, TrendingUp,
 } from 'lucide-react';
 import { ApiClient } from '@/services/api';
 import { saveToken } from '@/lib/auth';
 import { useSessionRestore } from '@/hooks/useSessionRestore';
-import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief, OnboardingStatus, TeamWorkspaceState } from '@/types/index';
+import { AnalyticsSummary, Task, BrainDump, AskResult, MorningBrief, OnboardingStatus, TeamWorkspaceState, NextBestActionResult, PriorityBriefResult } from '@/types/index';
 import { buildWorkspaceContext } from '@/lib/aiContext';
 import AppNav from '@/components/layout/AppNav';
 import KPICard from '@/components/ui/KPICard';
@@ -147,6 +147,14 @@ export default function DashboardPage() {
   const [askLoading, setAskLoading]     = useState(false);
   const [askError, setAskError]         = useState('');
 
+  // Next Best Action
+  const [nextAction, setNextAction]     = useState<NextBestActionResult | null>(null);
+  const [nextActionLoading, setNextActionLoading] = useState(false);
+
+  // Priority Brief
+  const [priorityBrief, setPriorityBrief] = useState<PriorityBriefResult | null>(null);
+  const [priorityBriefLoading, setPriorityBriefLoading] = useState(false);
+
   // Team card (non-blocking, best-effort)
   const [teamState, setTeamState]       = useState<TeamWorkspaceState | null>(null);
 
@@ -249,6 +257,26 @@ export default function DashboardPage() {
       });
     } finally {
       setBriefLoading(false);
+    }
+  }
+
+  async function handleNextBestAction() {
+    setNextActionLoading(true);
+    try {
+      const result = await ApiClient.getNextBestAction();
+      if (result) setNextAction(result);
+    } catch { /* silent */ } finally {
+      setNextActionLoading(false);
+    }
+  }
+
+  async function handlePriorityBrief() {
+    setPriorityBriefLoading(true);
+    try {
+      const result = await ApiClient.getPriorityBrief();
+      if (result) setPriorityBrief(result);
+    } catch { /* silent */ } finally {
+      setPriorityBriefLoading(false);
     }
   }
 
@@ -600,6 +628,72 @@ export default function DashboardPage() {
                       )}
                     </PanelCard>
 
+                    {/* Priority Brief */}
+                    <PanelCard
+                      title="Priority Brief"
+                      badge={<Badge variant="info" className="ml-1">MindPad AI</Badge>}
+                      action={
+                        priorityBrief ? (
+                          <button onClick={() => setPriorityBrief(null)} style={{ fontSize: 11, color: 'rgba(80,110,160,0.65)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                            Refresh
+                          </button>
+                        ) : undefined
+                      }
+                    >
+                      {!priorityBrief ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
+                          <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.85)', lineHeight: 1.6 }}>
+                            Get a ranked view of your top priorities with reasoning based on your tasks and notes.
+                          </p>
+                          <Button size="sm" onClick={handlePriorityBrief} loading={priorityBriefLoading}>
+                            <TrendingUp size={13} /> Get Priority Brief
+                          </Button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {/* Top priority */}
+                          <div style={{
+                            padding: '11px 14px', borderRadius: 10,
+                            background: 'rgba(0,130,255,0.07)', border: '1px solid rgba(0,160,255,0.2)',
+                          }}>
+                            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#40b8ff', marginBottom: 5 }}>Top Priority</p>
+                            <p style={{ fontSize: 13, color: 'rgba(200,225,255,0.92)', fontWeight: 600, lineHeight: 1.5 }}>{priorityBrief.topPriority}</p>
+                          </div>
+
+                          {/* Secondary + quick win row */}
+                          <div style={{ display: 'grid', gap: 10 }} className="md:grid-cols-2">
+                            {priorityBrief.secondaryPriority && (
+                              <div style={{ padding: '10px 13px', borderRadius: 9, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(0,160,255,0.1)' }}>
+                                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'rgba(100,140,190,0.7)', marginBottom: 4 }}>Next up</p>
+                                <p style={{ fontSize: 12, color: 'rgba(160,200,240,0.85)', lineHeight: 1.5 }}>{priorityBrief.secondaryPriority}</p>
+                              </div>
+                            )}
+                            {priorityBrief.quickWin && (
+                              <div style={{ padding: '10px 13px', borderRadius: 9, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'rgba(80,200,130,0.8)', marginBottom: 4 }}>Quick win</p>
+                                <p style={{ fontSize: 12, color: 'rgba(140,220,170,0.85)', lineHeight: 1.5 }}>{priorityBrief.quickWin}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Reasoning */}
+                          {priorityBrief.reasoning && (
+                            <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.8)', lineHeight: 1.6, borderTop: '1px solid rgba(0,160,255,0.07)', paddingTop: 10 }}>
+                              {priorityBrief.reasoning}
+                            </p>
+                          )}
+
+                          {/* Session suggestion */}
+                          {priorityBrief.suggestedFocusSession && (
+                            <div style={{ padding: '9px 13px', borderRadius: 9, background: 'rgba(0,80,200,0.06)', border: '1px solid rgba(0,160,255,0.1)', fontSize: 12, color: 'rgba(140,185,240,0.85)', lineHeight: 1.55 }}>
+                              <Timer size={11} style={{ display: 'inline', marginRight: 6, color: '#40b8ff', verticalAlign: 'middle' }} />
+                              {priorityBrief.suggestedFocusSession}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </PanelCard>
+
                     {/* Today's Focus */}
                     <PanelCard
                       title="Today's Focus"
@@ -661,6 +755,82 @@ export default function DashboardPage() {
 
                   {/* Right 1/3 */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+                    {/* Next Best Action */}
+                    <PanelCard
+                      title="Next Best Action"
+                      badge={<Badge variant="info" className="ml-1">MindPad AI</Badge>}
+                      action={
+                        nextAction ? (
+                          <button onClick={() => setNextAction(null)} style={{ fontSize: 11, color: 'rgba(80,110,160,0.65)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                            Refresh
+                          </button>
+                        ) : undefined
+                      }
+                    >
+                      {!nextAction ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
+                          <p style={{ fontSize: 12, color: 'rgba(90,120,160,0.8)', lineHeight: 1.6 }}>
+                            Get a precise recommendation for what to work on next, with evidence from your tasks and notes.
+                          </p>
+                          <Button size="sm" onClick={handleNextBestAction} loading={nextActionLoading}>
+                            <Target size={13} /> What's next?
+                          </Button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+                          {/* Recommended action */}
+                          <div style={{
+                            padding: '10px 13px', borderRadius: 9,
+                            background: 'rgba(255,185,0,0.06)', border: '1px solid rgba(255,185,0,0.18)',
+                            display: 'flex', gap: 9, alignItems: 'flex-start',
+                          }}>
+                            <Target size={13} style={{ color: '#ffb700', flexShrink: 0, marginTop: 1 }} />
+                            <p style={{ fontSize: 13, color: 'rgba(200,225,255,0.92)', fontWeight: 600, lineHeight: 1.5 }}>
+                              {nextAction.recommendedAction}
+                            </p>
+                          </div>
+
+                          {/* Why this matters */}
+                          <p style={{ fontSize: 12, color: 'rgba(110,150,200,0.85)', lineHeight: 1.65 }}>
+                            {nextAction.whyThisMatters}
+                          </p>
+
+                          {/* First step */}
+                          <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(0,160,255,0.1)' }}>
+                            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'rgba(80,130,190,0.7)', marginBottom: 4 }}>First step</p>
+                            <p style={{ fontSize: 12, color: 'rgba(160,200,240,0.85)', lineHeight: 1.5 }}>{nextAction.firstStep}</p>
+                          </div>
+
+                          {/* Meta row */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'rgba(70,100,140,0.7)' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <Timer size={10} /> {nextAction.estimatedFocusTime} min
+                            </span>
+                            <span style={{
+                              padding: '2px 8px', borderRadius: 99, fontWeight: 700,
+                              background: nextAction.confidenceLabel === 'high' ? 'rgba(34,197,94,0.08)' : nextAction.confidenceLabel === 'medium' ? 'rgba(0,130,255,0.08)' : 'rgba(120,120,130,0.1)',
+                              border: `1px solid ${nextAction.confidenceLabel === 'high' ? 'rgba(34,197,94,0.2)' : nextAction.confidenceLabel === 'medium' ? 'rgba(0,160,255,0.2)' : 'rgba(120,120,130,0.2)'}`,
+                              color: nextAction.confidenceLabel === 'high' ? 'rgba(80,200,120,0.85)' : nextAction.confidenceLabel === 'medium' ? 'rgba(80,160,255,0.85)' : 'rgba(120,140,170,0.75)',
+                            }}>
+                              {nextAction.confidenceLabel} confidence
+                            </span>
+                          </div>
+
+                          {/* Start session link */}
+                          <Link href="/focus" style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                            padding: '8px 0', borderRadius: 9, textDecoration: 'none',
+                            background: 'rgba(0,130,255,0.09)', border: '1px solid rgba(0,160,255,0.18)',
+                            fontSize: 12, fontWeight: 600, color: '#50c8ff',
+                            transition: 'background 0.15s',
+                          }}>
+                            <Timer size={12} /> Start {nextAction.estimatedFocusTime}-min session
+                          </Link>
+                        </div>
+                      )}
+                    </PanelCard>
+
                     {/* Quick actions */}
                     <PanelCard title="Quick Actions">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

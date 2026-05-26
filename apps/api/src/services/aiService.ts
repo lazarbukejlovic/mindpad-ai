@@ -57,6 +57,41 @@ export interface TaskCleanupResult {
   mode: 'ai' | 'offline';
 }
 
+export interface NextBestActionResult {
+  recommendedAction: string;
+  whyThisMatters: string;
+  firstStep: string;
+  estimatedFocusTime: number;
+  riskIfIgnored: string;
+  relatedTasks: string[];
+  confidenceLabel: 'low' | 'medium' | 'high';
+  mode: 'ai' | 'offline';
+}
+
+export interface PriorityBriefResult {
+  topPriority: string;
+  secondaryPriority: string;
+  quickWin: string;
+  avoidForNow: string;
+  reasoning: string;
+  suggestedFocusSession: string;
+  mode: 'ai' | 'offline';
+}
+
+export interface BlockerAnalysisItem {
+  blocker: string;
+  evidence: string;
+  impact: string;
+  nextAction: string;
+  suggestedFocusWindow: string;
+}
+
+export interface BlockerAnalysisResult {
+  blockers: BlockerAnalysisItem[];
+  overallStatus: string;
+  mode: 'ai' | 'offline';
+}
+
 type FailureReason =
   | 'missing_key'
   | 'invalid_key_or_auth'
@@ -738,5 +773,222 @@ function buildTaskCleanupFallback(activeTasks: Array<{ title: string; priority: 
       : 'All tasks are medium or low priority. Pick the one with the nearest deadline or highest impact.',
     mode: 'offline',
   };
+}
+
+// ─── Next Best Action ───────────────────────────────────────────────────────
+
+export async function getNextBestAction(
+  contextPrompt: string,
+  topTasks: Array<{ title: string; priority: string; score: number }>
+): Promise<NextBestActionResult> {
+  const fallback = buildNextBestActionFallback(topTasks);
+  if (!config.geminiApiKey) return fallback;
+
+  try {
+    const prompt = `You are MindPad AI — a personal execution intelligence assistant. Based on the user's workspace context, identify the single best action to take next.
+
+${contextPrompt}
+
+Respond with a JSON object:
+{
+  "recommendedAction": "The exact task title or specific action to take next",
+  "whyThisMatters": "1-2 sentences: concrete reason based on signals in the context — task age, blocking effects, repeated mentions",
+  "firstStep": "The smallest concrete action to start within the next 5 minutes",
+  "estimatedFocusTime": 25,
+  "riskIfIgnored": "1 sentence: practical consequence of continued delay",
+  "relatedTasks": ["up to 2 related task titles from the active list"],
+  "confidenceLabel": "high|medium|low"
+}
+
+Rules:
+- Be specific to actual tasks and context — no generic advice
+- "confidenceLabel": high = multiple signals align, low = limited data
+- Return ONLY valid JSON`;
+
+    const responseText = await callAI(prompt);
+    const jsonStr = extractJson(responseText);
+    if (!jsonStr) return fallback;
+
+    const parsed = JSON.parse(jsonStr) as NextBestActionResult;
+    return {
+      recommendedAction: parsed.recommendedAction || fallback.recommendedAction,
+      whyThisMatters: parsed.whyThisMatters || fallback.whyThisMatters,
+      firstStep: parsed.firstStep || fallback.firstStep,
+      estimatedFocusTime: typeof parsed.estimatedFocusTime === 'number' ? parsed.estimatedFocusTime : 25,
+      riskIfIgnored: parsed.riskIfIgnored || fallback.riskIfIgnored,
+      relatedTasks: Array.isArray(parsed.relatedTasks) ? parsed.relatedTasks : [],
+      confidenceLabel: (['low', 'medium', 'high'] as const).includes(parsed.confidenceLabel) ? parsed.confidenceLabel : 'medium',
+      mode: 'ai',
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[MindPad AI] next-best-action failed: ${categorizeError(error)}${getHttpStatus(error) ? ` (HTTP ${getHttpStatus(error)})` : ''}`);
+    }
+    return fallback;
+  }
+}
+
+function buildNextBestActionFallback(
+  topTasks: Array<{ title: string; priority: string; score: number }>
+): NextBestActionResult {
+  const top = topTasks[0];
+  if (!top) {
+    return {
+      recommendedAction: 'Write a brain dump',
+      whyThisMatters: 'Your workspace has no active tasks. Capturing your thoughts is the first step to clarity.',
+      firstStep: 'Open Brain Dump and write everything on your mind.',
+      estimatedFocusTime: 15,
+      riskIfIgnored: 'Without capturing tasks, important work stays in your head and gets lost.',
+      relatedTasks: [],
+      confidenceLabel: 'high',
+      mode: 'offline',
+    };
+  }
+  return {
+    recommendedAction: top.title,
+    whyThisMatters: 'This task has the highest priority and urgency score based on your current list.',
+    firstStep: `Open your tools for "${top.title}" and identify the first concrete action.`,
+    estimatedFocusTime: 25,
+    riskIfIgnored: 'Delayed high-priority tasks create bottlenecks for downstream work.',
+    relatedTasks: topTasks.slice(1, 3).map(t => t.title),
+    confidenceLabel: top.score >= 6 ? 'high' : top.score >= 3 ? 'medium' : 'low',
+    mode: 'offline',
+  };
+}
+
+// ─── Priority Brief ──────────────────────────────────────────────────────────
+
+export async function getPriorityBrief(
+  contextPrompt: string,
+  topTasks: Array<{ title: string; priority: string; score: number }>
+): Promise<PriorityBriefResult> {
+  const fallback = buildPriorityBriefFallback(topTasks);
+  if (!config.geminiApiKey) return fallback;
+
+  try {
+    const prompt = `You are MindPad AI — a personal execution intelligence assistant. Generate a concise priority brief.
+
+${contextPrompt}
+
+Respond with a JSON object:
+{
+  "topPriority": "The single most important task — exact title from the active list",
+  "secondaryPriority": "Second most important — exact title, or empty string",
+  "quickWin": "A task completable in under 30 minutes — exact title, or empty string",
+  "avoidForNow": "A task to defer (low-signal, not blocking) — exact title, or empty string",
+  "reasoning": "2-3 sentences: reference specific signals — task age, keyword matches, brain dump mentions, focus gaps",
+  "suggestedFocusSession": "Specific session plan: e.g. '25 min on [task] then 5 min break, then [task]'"
+}
+
+Rules:
+- Use exact task titles from the active list
+- "quickWin" must be realistic and completable, not aspirational
+- Return ONLY valid JSON`;
+
+    const responseText = await callAI(prompt);
+    const jsonStr = extractJson(responseText);
+    if (!jsonStr) return fallback;
+
+    const parsed = JSON.parse(jsonStr) as PriorityBriefResult;
+    return {
+      topPriority: parsed.topPriority || fallback.topPriority,
+      secondaryPriority: parsed.secondaryPriority || '',
+      quickWin: parsed.quickWin || '',
+      avoidForNow: parsed.avoidForNow || '',
+      reasoning: parsed.reasoning || fallback.reasoning,
+      suggestedFocusSession: parsed.suggestedFocusSession || fallback.suggestedFocusSession,
+      mode: 'ai',
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[MindPad AI] priority-brief failed: ${categorizeError(error)}${getHttpStatus(error) ? ` (HTTP ${getHttpStatus(error)})` : ''}`);
+    }
+    return fallback;
+  }
+}
+
+function buildPriorityBriefFallback(
+  topTasks: Array<{ title: string; priority: string; score: number }>
+): PriorityBriefResult {
+  const highTasks = topTasks.filter(t => t.priority === 'high');
+  const top = highTasks[0] || topTasks[0];
+  const second = highTasks[1] || topTasks[1];
+  const quick = topTasks.find(t => t.priority !== 'high' && t.title.split(' ').length <= 5);
+
+  if (!top) {
+    return {
+      topPriority: 'Create a brain dump',
+      secondaryPriority: '',
+      quickWin: '',
+      avoidForNow: '',
+      reasoning: 'No tasks in your workspace. Start by capturing your thoughts in a brain dump.',
+      suggestedFocusSession: 'Spend 15 minutes on a brain dump to surface your priorities.',
+      mode: 'offline',
+    };
+  }
+
+  return {
+    topPriority: top.title,
+    secondaryPriority: second?.title || '',
+    quickWin: quick?.title || '',
+    avoidForNow: '',
+    reasoning: `"${top.title}" ranks highest by priority and urgency. ${highTasks.length > 1 ? `You have ${highTasks.length} high-priority items — focus on one at a time.` : 'Your active list looks manageable.'}`,
+    suggestedFocusSession: `Start with a 25-minute session on "${top.title}"${second ? `, then continue with "${second.title}"` : ''}.`,
+    mode: 'offline',
+  };
+}
+
+// ─── Blocker Analysis ────────────────────────────────────────────────────────
+
+export async function analyzeBlockers(contextPrompt: string): Promise<BlockerAnalysisResult> {
+  const fallback: BlockerAnalysisResult = {
+    blockers: [],
+    overallStatus: 'No clear blockers detected. Your tasks appear actionable.',
+    mode: 'offline',
+  };
+
+  if (!config.geminiApiKey) return fallback;
+
+  try {
+    const prompt = `You are MindPad AI — a personal execution intelligence assistant. Analyze the user's workspace for tasks that appear stuck, blocked, or repeatedly deferred.
+
+${contextPrompt}
+
+Respond with a JSON object:
+{
+  "blockers": [
+    {
+      "blocker": "Short description of what is blocking progress",
+      "evidence": "Specific evidence: task age, keywords like blocked/waiting, repeated brain dump mentions",
+      "impact": "What other work is affected if this stays unresolved",
+      "nextAction": "Specific first step to unblock this",
+      "suggestedFocusWindow": "e.g. '30 minutes tomorrow morning'"
+    }
+  ],
+  "overallStatus": "1-2 sentences: honest read on the user's execution health"
+}
+
+Rules:
+- Only include genuine blockers with real signals (stale >14d, blocker keywords, repeated mentions)
+- 0-3 blockers maximum. Empty array if no clear blockers
+- "evidence" must be specific, not generic
+- Return ONLY valid JSON`;
+
+    const responseText = await callAI(prompt);
+    const jsonStr = extractJson(responseText);
+    if (!jsonStr) return fallback;
+
+    const parsed = JSON.parse(jsonStr) as BlockerAnalysisResult;
+    return {
+      blockers: Array.isArray(parsed.blockers) ? parsed.blockers : [],
+      overallStatus: parsed.overallStatus || fallback.overallStatus,
+      mode: 'ai',
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[MindPad AI] blocker-analysis failed: ${categorizeError(error)}${getHttpStatus(error) ? ` (HTTP ${getHttpStatus(error)})` : ''}`);
+    }
+    return fallback;
+  }
 }
 

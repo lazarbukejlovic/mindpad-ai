@@ -449,6 +449,30 @@ export class ApiClient {
     }).catch(() => null);
   }
 
+  static getNextBestAction() {
+    return this.request<import('@/types/index').NextBestActionResult>(
+      '/ai/next-best-action',
+      { method: 'POST', body: JSON.stringify({}) },
+      15000
+    ).catch(() => null);
+  }
+
+  static getPriorityBrief() {
+    return this.request<import('@/types/index').PriorityBriefResult>(
+      '/ai/priority-brief',
+      { method: 'POST', body: JSON.stringify({}) },
+      15000
+    ).catch(() => null);
+  }
+
+  static getBlockerAnalysis() {
+    return this.request<import('@/types/index').BlockerAnalysisResult>(
+      '/ai/blocker-analysis',
+      { method: 'POST', body: JSON.stringify({}) },
+      15000
+    ).catch(() => null);
+  }
+
   // Tasks
   static createTask(data: {
     title: string;

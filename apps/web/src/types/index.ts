@@ -226,3 +226,38 @@ export interface TeamWeeklyReport {
   memberCount: number;
   projectCount: number;
 }
+
+export interface NextBestActionResult {
+  recommendedAction: string;
+  whyThisMatters: string;
+  firstStep: string;
+  estimatedFocusTime: number;
+  riskIfIgnored: string;
+  relatedTasks: string[];
+  confidenceLabel: 'low' | 'medium' | 'high';
+  mode: 'ai' | 'offline';
+}
+
+export interface PriorityBriefResult {
+  topPriority: string;
+  secondaryPriority: string;
+  quickWin: string;
+  avoidForNow: string;
+  reasoning: string;
+  suggestedFocusSession: string;
+  mode: 'ai' | 'offline';
+}
+
+export interface BlockerAnalysisItem {
+  blocker: string;
+  evidence: string;
+  impact: string;
+  nextAction: string;
+  suggestedFocusWindow: string;
+}
+
+export interface BlockerAnalysisResult {
+  blockers: BlockerAnalysisItem[];
+  overallStatus: string;
+  mode: 'ai' | 'offline';
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   BarChart3, CheckCircle2, Clock, Flame, ListTodo, Percent, Moon, Sparkles,
-  FileText, RefreshCw, Copy, Check,
+  FileText, RefreshCw, Copy, Check, AlertTriangle,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -11,7 +11,7 @@ import {
 import Link from 'next/link';
 import { ApiClient } from '@/services/api';
 import { useSessionRestore } from '@/hooks/useSessionRestore';
-import { AnalyticsSummary, WeeklyReview, ExportSummary } from '@/types/index';
+import { AnalyticsSummary, WeeklyReview, ExportSummary, BlockerAnalysisResult } from '@/types/index';
 import { useBilling } from '@/hooks/useBilling';
 import AppNav from '@/components/layout/AppNav';
 import KPICard from '@/components/ui/KPICard';
@@ -108,6 +108,11 @@ export default function AnalyticsPage() {
   const [exportError, setExportError]       = useState('');
   const [copied, setCopied]                 = useState(false);
 
+  // Blocker Analysis
+  const [blockerData, setBlockerData]       = useState<BlockerAnalysisResult | null>(null);
+  const [blockerLoading, setBlockerLoading] = useState(false);
+  const [blockerError, setBlockerError]     = useState('');
+
   useEffect(() => {
     if (checking) return;
     ApiClient.getAnalyticsSummary()
@@ -158,6 +163,20 @@ export default function AnalyticsPage() {
       setExportError(err instanceof Error ? err.message : 'Failed to generate export');
     } finally {
       setExportLoading(false);
+    }
+  }
+
+  async function handleBlockerAnalysis() {
+    setBlockerLoading(true);
+    setBlockerError('');
+    try {
+      const result = await ApiClient.getBlockerAnalysis();
+      if (result) setBlockerData(result);
+      else setBlockerError('MindPad could not generate this insight right now. Try again.');
+    } catch {
+      setBlockerError('MindPad could not generate this insight right now. Try again.');
+    } finally {
+      setBlockerLoading(false);
     }
   }
 
@@ -690,6 +709,89 @@ export default function AnalyticsPage() {
                       <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.75)' }}>
                         Generate a personalized end-of-day summary with wins, unfinished work, and tomorrow's priority.
                       </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* AI Blocker Analysis */}
+                <div style={{ ...panel, borderLeft: '3px solid rgba(239,100,60,0.5)', marginBottom: 20 }}>
+                  <div style={{
+                    padding: '14px 20px 10px', borderBottom: '1px solid rgba(0,160,255,0.07)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <AlertTriangle size={15} style={{ color: 'rgba(239,120,60,0.85)' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(180,210,240,0.9)' }}>Blocker Analysis</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#40b8ff' }}>
+                        <Sparkles size={11} /> MindPad AI
+                      </div>
+                    </div>
+                    {!blockerData ? (
+                      <Button size="sm" onClick={handleBlockerAnalysis} loading={blockerLoading}>
+                        <AlertTriangle size={12} /> Analyze
+                      </Button>
+                    ) : (
+                      <button onClick={() => setBlockerData(null)} style={{ fontSize: 11, color: 'rgba(70,100,140,0.6)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        Refresh
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ padding: '16px 20px 20px' }}>
+                    {blockerError && <p style={{ fontSize: 13, color: '#ef4444', marginBottom: 8 }}>{blockerError}</p>}
+                    {!blockerData ? (
+                      <p style={{ fontSize: 13, color: 'rgba(90,120,160,0.75)' }}>
+                        Scan your tasks and notes for stuck work, delayed items, and patterns that are slowing down execution.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Overall status */}
+                        <p style={{ fontSize: 13, color: 'rgba(180,210,240,0.85)', lineHeight: 1.65 }}>
+                          {blockerData.overallStatus}
+                        </p>
+
+                        {blockerData.blockers.length === 0 ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                            <CheckCircle2 size={14} style={{ color: '#22c55e', flexShrink: 0 }} />
+                            <span style={{ fontSize: 13, color: 'rgba(150,220,170,0.85)' }}>No blockers detected. Your work appears actionable.</span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            {blockerData.blockers.map((b, i) => (
+                              <div key={i} style={{ padding: '14px 16px', borderRadius: 10, background: 'rgba(239,100,60,0.05)', border: '1px solid rgba(239,100,60,0.18)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                  <span style={{
+                                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+                                    background: 'rgba(239,100,60,0.12)', border: '1px solid rgba(239,100,60,0.25)',
+                                    color: 'rgba(239,140,100,0.9)',
+                                  }}>BLOCKER {i + 1}</span>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(200,220,245,0.9)' }}>{b.blocker}</span>
+                                </div>
+
+                                <div style={{ display: 'grid', gap: 8 }} className="md:grid-cols-2">
+                                  <div>
+                                    <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(80,120,170,0.7)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Evidence</p>
+                                    <p style={{ fontSize: 12, color: 'rgba(160,200,240,0.8)', lineHeight: 1.55 }}>{b.evidence}</p>
+                                  </div>
+                                  <div>
+                                    <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(80,120,170,0.7)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Impact</p>
+                                    <p style={{ fontSize: 12, color: 'rgba(160,200,240,0.8)', lineHeight: 1.55 }}>{b.impact}</p>
+                                  </div>
+                                </div>
+
+                                <div style={{ marginTop: 10, padding: '9px 12px', borderRadius: 8, background: 'rgba(0,130,255,0.06)', border: '1px solid rgba(0,160,255,0.12)' }}>
+                                  <p style={{ fontSize: 10, fontWeight: 700, color: '#40b8ff', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Next action</p>
+                                  <p style={{ fontSize: 12, color: 'rgba(180,220,255,0.85)', lineHeight: 1.55 }}>{b.nextAction}</p>
+                                  {b.suggestedFocusWindow && (
+                                    <p style={{ fontSize: 11, color: 'rgba(80,120,170,0.7)', marginTop: 4 }}>
+                                      Suggested window: {b.suggestedFocusWindow}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
